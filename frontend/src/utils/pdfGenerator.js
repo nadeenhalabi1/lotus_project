@@ -1,34 +1,15 @@
-// Temporarily comment out problematic imports
-// import jsPDF from 'jspdf';
-// import html2canvas from 'html2canvas';
+// Dynamic imports to avoid build issues
+let jsPDF, html2canvas;
 
-// Mock implementations for testing
-const jsPDF = {
-  new: () => ({
-    setFont: () => {},
-    setFontSize: () => {},
-    setTextColor: () => {},
-    text: () => {},
-    line: () => {},
-    setDrawColor: () => {},
-    addImage: () => {},
-    addPage: () => {},
-    save: () => {},
-    internal: {
-      pageSize: {
-        getWidth: () => 210,
-        getHeight: () => 297
-      },
-      getNumberOfPages: () => 1
-    }
-  })
+const loadPDFLibraries = async () => {
+  if (!jsPDF) {
+    jsPDF = (await import('jspdf')).default;
+  }
+  if (!html2canvas) {
+    html2canvas = (await import('html2canvas')).default;
+  }
+  return { jsPDF, html2canvas };
 };
-
-const html2canvas = () => Promise.resolve({
-  toDataURL: () => 'data:image/png;base64,test',
-  width: 100,
-  height: 100
-});
 
 /**
  * Generate PDF report from dashboard data
@@ -38,8 +19,11 @@ const html2canvas = () => Promise.resolve({
  */
 export const generatePDFReport = async (reportData, reportTitle = 'Management Report', reportType = 'dashboard') => {
   try {
+    // Load PDF libraries dynamically
+    const { jsPDF: PDF, html2canvas: canvas } = await loadPDFLibraries();
+    
     // Create new PDF document
-    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdf = new PDF('p', 'mm', 'a4');
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     
@@ -359,8 +343,11 @@ const addFooter = (pdf, pageWidth, pageHeight) => {
  */
 export const generateEnhancedPDF = async (reportData, reportTitle = 'Report', chartElements = []) => {
   try {
+    // Load PDF libraries dynamically
+    const { jsPDF: PDF, html2canvas: canvas } = await loadPDFLibraries();
+    
     // Create new PDF document
-    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pdf = new PDF('p', 'mm', 'a4');
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
     
@@ -478,7 +465,7 @@ export const generateEnhancedPDF = async (reportData, reportTitle = 'Report', ch
             yPosition += 8;
             
             // Capture chart as image
-            const canvas = await html2canvas(chartElement, {
+            const chartCanvas = await canvas(chartElement, {
               scale: 2,
               useCORS: true,
               allowTaint: true,
@@ -487,11 +474,11 @@ export const generateEnhancedPDF = async (reportData, reportTitle = 'Report', ch
               height: chartElement.scrollHeight
             });
             
-            const imgData = canvas.toDataURL('image/png');
+            const imgData = chartCanvas.toDataURL('image/png');
             
             // Calculate dimensions to fit the image
-            const imgWidth = canvas.width;
-            const imgHeight = canvas.height;
+            const imgWidth = chartCanvas.width;
+            const imgHeight = chartCanvas.height;
             const maxWidth = pageWidth - 30;
             const maxHeight = 80; // Increased max height for charts
             const ratio = Math.min(maxWidth / imgWidth, maxHeight / imgHeight);

@@ -1,4 +1,4 @@
-import{r as c,a as le}from"./vendor-CaPcCbO9.js";/**
+import{r as c,a as le}from"./vendor-Tu5d_DtD.js";/**
  * @remix-run/router v1.23.0
  *
  * Copyright (c) Remix Software Inc.
@@ -26,4 +26,4 @@ import{r as c,a as le}from"./vendor-CaPcCbO9.js";/**
  *
  * @license MIT
  */const Ye="6";try{window.__reactRouterVersion=Ye}catch{}const Ze="startTransition",D=le[Ze];function nt(e){let{basename:t,children:n,future:r,window:a}=e,l=c.useRef();l.current==null&&(l.current=ie({window:a,v5Compat:!0}));let i=l.current,[s,o]=c.useState({action:i.action,location:i.location}),{v7_startTransition:h}=r||{},f=c.useCallback(u=>{h&&D?D(()=>o(u)):o(u)},[o,h]);return c.useLayoutEffect(()=>i.listen(f),[i,f]),c.useEffect(()=>Ke(r),[r]),c.createElement(Xe,{basename:t,children:n,location:s.location,navigationType:s.action,navigator:i,future:r})}var J;(function(e){e.UseScrollRestoration="useScrollRestoration",e.UseSubmit="useSubmit",e.UseSubmitFetcher="useSubmitFetcher",e.UseFetcher="useFetcher",e.useViewTransitionState="useViewTransitionState"})(J||(J={}));var A;(function(e){e.UseFetcher="useFetcher",e.UseFetchers="useFetchers",e.UseScrollRestoration="useScrollRestoration"})(A||(A={}));export{nt as B,et as N,tt as R,Qe as a};
-//# sourceMappingURL=router-C3_ceN9j.js.map
+//# sourceMappingURL=router-z-FU4R-S.js.map
