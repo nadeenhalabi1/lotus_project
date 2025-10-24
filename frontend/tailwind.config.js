@@ -1,98 +1,127 @@
-// Tailwind CSS Configuration
-
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
+        // === Dark Emerald Color Palette - Rich & Elegant ===
         primary: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
+          blue: '#065f46',
+          purple: '#047857',
+          cyan: '#0f766e',
         },
-        secondary: {
-          50: '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
-          300: '#cbd5e1',
-          400: '#94a3b8',
-          500: '#64748b',
-          600: '#475569',
-          700: '#334155',
-          800: '#1e293b',
-          900: '#0f172a',
+
+        // === Accent Colors ===
+        accent: {
+          gold: '#d97706',
+          green: '#047857',
+          orange: '#f59e0b',
         },
-        success: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          200: '#bbf7d0',
-          300: '#86efac',
-          400: '#4ade80',
-          500: '#22c55e',
-          600: '#16a34a',
-          700: '#15803d',
-          800: '#166534',
-          900: '#14532d',
+
+        // === Neutral Colors - Bright & Modern ===
+        neutral: {
+          bg: '#f8fafc',
+          bg2: '#e2e8f0',
+          bg3: '#cbd5e1',
+          card: '#ffffff',
+          text: '#1e293b',
+          text2: '#475569',
+          muted: '#64748b',
+          tacc: '#334155',
         },
-        warning: {
-          50: '#fffbeb',
-          100: '#fef3c7',
-          200: '#fde68a',
-          300: '#fcd34d',
-          400: '#fbbf24',
-          500: '#f59e0b',
-          600: '#d97706',
-          700: '#b45309',
-          800: '#92400e',
-          900: '#78350f',
+
+        // === Neutral Colors (Dark Mode) ===
+        dark: {
+          bg: '#0f172a',
+          bg2: '#1e293b',
+          bg3: '#334155',
+          card: '#1e293b',
+          text: '#f8fafc',
+          text2: '#cbd5e1',
+          muted: '#94a3b8',
+          tacc: '#e2e8f0',
         },
-        error: {
-          50: '#fef2f2',
-          100: '#fee2e2',
-          200: '#fecaca',
-          300: '#fca5a5',
-          400: '#f87171',
-          500: '#ef4444',
-          600: '#dc2626',
-          700: '#b91c1c',
-          800: '#991b1b',
-          900: '#7f1d1d',
+
+        // === Gamification Colors ===
+        game: {
+          xp: '#f59e0b',
+          level: '#047857',
+          badge: '#10b981',
+          streak: '#ef4444',
         },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Space Grotesk', 'system-ui', 'sans-serif'],
       },
       spacing: {
-        '18': '4.5rem',
-        '88': '22rem',
+        xs: '0.5rem',
+        sm: '1rem',
+        md: '1.5rem',
+        lg: '2rem',
+        xl: '3rem',
+        '2xl': '4rem',
+      },
+      boxShadow: {
+        glow: '0 0 30px rgba(6,95,70,0.3)',
+        card: '0 10px 40px rgba(0,0,0,0.1)',
+        hover: '0 20px 60px rgba(6,95,70,0.2)',
+      },
+      backgroundImage: {
+        'gradient-primary': 'linear-gradient(135deg, #065f46, #047857)',
+        'gradient-secondary': 'linear-gradient(135deg, #0f766e, #047857)',
+        'gradient-accent': 'linear-gradient(135deg, #d97706, #f59e0b)',
+        'gradient-card': 'linear-gradient(145deg, #ffffff, #f0fdfa)',
       },
       animation: {
-        'fade-in': 'fadeIn 0.5s ease-in-out',
-        'slide-up': 'slideUp 0.3s ease-out',
-        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'gradient-shift': 'gradientShift 8s ease-in-out infinite',
+        'background-shift': 'backgroundShift 12s ease-in-out infinite',
+        'float': 'float 6s ease-in-out infinite',
+        'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'ripple': 'ripple 0.6s ease-out',
+        'progress-glow': 'progressGlow 2s ease-in-out infinite',
+        'xp-glow': 'xpGlow 3s ease-in-out infinite',
+        'notification-pulse': 'notificationPulse 2s ease-in-out infinite',
+        'spin': 'spin 1s linear infinite',
       },
       keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
+        gradientShift: {
+          '0%, 100%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' },
         },
-        slideUp: {
-          '0%': { transform: 'translateY(10px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
+        backgroundShift: {
+          '0%, 100%': { transform: 'translateX(0) translateY(0)' },
+          '25%': { transform: 'translateX(2px) translateY(-2px)' },
+          '50%': { transform: 'translateX(-2px) translateY(2px)' },
+          '75%': { transform: 'translateX(2px) translateY(2px)' },
+        },
+        float: {
+          '0%, 100%': { transform: 'translateY(0px)' },
+          '50%': { transform: 'translateY(-10px)' },
+        },
+        ripple: {
+          '0%': { transform: 'scale(0)', opacity: '1' },
+          '100%': { transform: 'scale(4)', opacity: '0' },
+        },
+        progressGlow: {
+          '0%, 100%': { boxShadow: '0 0 5px rgba(217,119,6,0.5)' },
+          '50%': { boxShadow: '0 0 20px rgba(217,119,6,0.8)' },
+        },
+        xpGlow: {
+          '0%, 100%': { boxShadow: '0 0 10px rgba(245,158,11,0.3)' },
+          '50%': { boxShadow: '0 0 25px rgba(245,158,11,0.6)' },
+        },
+        notificationPulse: {
+          '0%, 100%': { transform: 'scale(1)', opacity: '1' },
+          '50%': { transform: 'scale(1.05)', opacity: '0.8' },
         },
       },
     },
   },
   plugins: [],
 };
+

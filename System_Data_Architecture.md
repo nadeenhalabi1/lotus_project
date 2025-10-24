@@ -1,269 +1,320 @@
-# System & Data Architecture
-## HR & Management Reporting Microservice for educoreAI
+# System & Data Architecture Document
+## educoreAI Management Reporting Microservice
 
 ### Architecture Overview
 
-The HR & Management Reporting microservice adopts an **Onion Architecture** pattern with four concentric layers, ensuring clean separation of concerns, testability, and maintainability while supporting scalable data processing and AI-powered insights.
+The Management Reporting microservice follows an **Onion Architecture** pattern with clean separation of concerns, ensuring maintainability, testability, and scalability. The system is designed to handle 50+ concurrent users with high availability and performance requirements.
 
-### System Layers & Components
+### System Layers & Responsibilities
 
 #### 1. Domain Core Layer
-**Purpose:** Defines business concepts, policies, and rules
+**Purpose:** Contains business entities, use cases, and domain logic
 **Components:**
-- **Domain Entities:** Organization, Team, Skill, Metric, Report, AIRecommendation
-- **Domain Policies:** Data filtering rules, normalization logic, aggregation policies
-- **Business Rules:** Role-based access policies, data retention rules, compliance requirements
-- **Value Objects:** MetricValue, TimeRange, UserRole, ReportParameters
+- **Entities:** Report, Dashboard, AIInsight, User, Organization
+- **Use Cases:** GenerateReport, RefreshData, AnalyzeWithAI, ApproveInsight
+- **Domain Services:** ReportAggregationService, DataTransformationService
+- **Ports:** External microservice interfaces, data storage interfaces
 
 #### 2. Application Layer
-**Purpose:** Orchestrates use cases and enforces domain rules
+**Purpose:** Orchestrates business logic and coordinates between layers
 **Components:**
-- **Use Case Services:** DashboardService, ReportGenerationService, DataIngestionService
-- **Application Policies:** Cross-organizational analysis, organization-specific reporting
-- **Orchestration:** Report generation workflow, AI analysis coordination
-- **Domain Event Handlers:** Data update notifications, user action logging
+- **Application Services:** ReportService, DashboardService, AIService
+- **DTOs:** ReportDTO, DashboardDTO, InsightDTO
+- **Command/Query Handlers:** CQRS pattern for read/write operations
+- **Event Handlers:** Domain event processing
 
-#### 3. Interface (Inbound) Adapters
-**Purpose:** Expose capabilities to clients and translate requests/responses
+#### 3. Infrastructure Layer
+**Purpose:** External integrations and data persistence
 **Components:**
-- **HTTP Controllers:** DashboardController, ReportController, AdminController
-- **Scheduled Entry Points:** DataIngestionScheduler, CleanupScheduler
-- **API Gateway Integration:** Request routing, authentication, rate limiting
-- **WebSocket Handlers:** Real-time dashboard updates (future enhancement)
+- **Adapters:** Microservice adapters (Directory, CourseBuilder, Assessment, etc.)
+- **Repositories:** Data access implementations
+- **External Services:** Gemini AI API client, Supabase client
+- **Cache Adapters:** Redis client implementations
 
-#### 4. Infrastructure (Outbound) Adapters
-**Purpose:** Handle persistence, caching, external microservice access, and AI connectivity
+#### 4. Interface Layer
+**Purpose:** API controllers and external interfaces
 **Components:**
-- **Data Access Layer:** Repository implementations, SQL queries, cache operations
-- **External Service Clients:** Microservice API clients, AI service integration
-- **Storage Services:** Cache management, SQL database operations
-- **Observability:** Logging, metrics, tracing, health checks
+- **REST Controllers:** DashboardController, ReportController, InsightController
+- **Middleware:** Authentication, logging, error handling
+- **API Gateway:** Request routing and validation
 
-### Data Architecture & Processing Pipeline
+### Data Flow Architecture
 
-#### Data Flow Architecture
+#### Daily Automatic Pull (08:00 AM)
 ```
-Six Microservices → Ingestion Ports → Filtering → Normalization → Aggregation → Cache + SQL → Reporting → AI Analysis → UI
+Scheduler → API Gateway → Microservice Adapters → Data Transformation → Cache Storage
 ```
 
-#### Ingestion Subsystem
-**Components:**
-- **Ingestion Coordinator:** Manages scheduled and on-demand data pulls
-- **Source Adapters:** Individual adapters for each microservice (DIRECTORY, COURSE BUILDER, ASSESSMENT, LEARNER AI, LEARNING ANALYTICS, DEVLAB)
-- **Delta Reader:** Tracks last-pull timestamps and source IDs for efficient updates
-- **Idempotent Upserter:** Ensures data consistency during concurrent updates
+**Flow Details:**
+1. **Scheduler Trigger:** Automated daily pull at 08:00 AM
+2. **Data Collection:** Parallel requests to 6 microservices (DIRECTORY, COURSEBUILDER, ASSESSMENT, LEARNERAI, DEVLAB, LEARNING ANALYTICS)
+3. **Data Processing:** PII filtering, normalization, taxonomy mapping, aggregation
+4. **Cache Storage:** Overview data stored in Redis with 30-day TTL
+5. **Fallback:** Historical data from SQL Database if cache is empty
 
-**Processing Pipeline:**
-1. **Filtering Stage:** Remove PII, incomplete records, inactive users
-2. **Normalization Stage:** Standardize dates, skill taxonomy, scoring scales
-3. **Aggregation Stage:** Group by team, department, organization levels
-4. **Storage Stage:** Write to cache (30 days) and SQL database (5 years)
+#### On-Demand Refresh (Per-Report)
+```
+User Request → API Gateway → Targeted Microservice Calls → Data Processing → Report Generation → AI Analysis → Cache Update
+```
 
-#### Data Storage Architecture
+**Flow Details:**
+1. **User Action:** Refresh Data button click on specific report
+2. **Targeted Requests:** API calls only to relevant microservices for that report
+3. **Data Processing:** Context-specific filtering and aggregation
+4. **Report Generation:** Chart, data table, and PDF creation
+5. **AI Analysis:** Automatic Gemini API call for insights
+6. **Cache Update:** New report stored with unique key
 
-##### Cache Layer (30-day retention)
-**Purpose:** Fast access to recent, query-ready aggregates
-**Technology:** Redis or similar in-memory store
-**Data Types:**
-- Pre-aggregated dashboard metrics
-- Recent report materials
-- User session data
-- Frequently accessed lookups
+#### Data Transformation Pipeline
+```
+Raw Data → PII Filtering → Format Normalization → Taxonomy Mapping → Score Unification → Deduplication → Aggregation → Metadata Tagging
+```
 
-**Cache Patterns:**
-- **Read-through:** Pre-aggregated metrics loaded on ingestion
-- **Cache-aside:** Parametrized reports and user-specific data
-- **Cache priming:** Default admin/HR dashboards pre-loaded
+**Transformation Steps:**
+- **PII Filtering:** Remove personally identifiable information
+- **Format Normalization:** UTC timestamps, consistent numeric precision
+- **Taxonomy Mapping:** Unified skills, course names, difficulty levels
+- **Score Unification:** Standardized assessment scales
+- **Deduplication:** Merge duplicate records using business keys
+- **Aggregation:** Organization/team/period level grouping
+- **Metadata:** Timestamp, schema version, data source tracking
 
-##### SQL Database (5-year retention)
-**Purpose:** Long-term storage for historical analysis and compliance
-**Schema:** Star schema design for analytical queries
+### Database Architecture
 
-**Fact Tables:**
+#### Cache Layer (Redis)
+**Purpose:** High-performance data access and temporary storage
+**Structure:**
+```
+Cache Keys:
+- Overview_YYYY-MM-DD: Daily overview data
+- Report_{ReportType}_{OrgId}_{Period}: Specific report data
+- User_{UserId}_Session: User session data
+- AI_Insight_{ReportId}: AI analysis results
+```
+
+**TTL Strategy:**
+- Overview data: 30 days
+- Report data: 30 days
+- User sessions: 24 hours
+- AI insights: 30 days
+
+#### Database Layer (PostgreSQL/Supabase)
+**Purpose:** Long-term data storage and historical analysis
+**Tables:**
 ```sql
-fact_metrics (
-    org_id VARCHAR(50),
-    team_id VARCHAR(50),
-    metric_type VARCHAR(100),
-    value DECIMAL(10,2),
-    time_key DATE,
-    created_at TIMESTAMP,
-    source_system VARCHAR(50)
-)
-```
+-- Organizations table
+organizations (
+  id UUID PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
 
-**Dimension Tables:**
-```sql
-dim_organization (
-    org_id VARCHAR(50) PRIMARY KEY,
-    org_name VARCHAR(200),
-    status VARCHAR(20),
-    created_at TIMESTAMP
-)
-
-dim_team (
-    team_id VARCHAR(50) PRIMARY KEY,
-    team_name VARCHAR(200),
-    org_id VARCHAR(50),
-    department VARCHAR(100)
-)
-
-dim_skill (
-    skill_id VARCHAR(50) PRIMARY KEY,
-    skill_name VARCHAR(200),
-    category VARCHAR(100),
-    taxonomy_version VARCHAR(20)
-)
-
-dim_time (
-    time_key DATE PRIMARY KEY,
-    year INT,
-    quarter INT,
-    month INT,
-    week INT,
-    day_of_week INT
-)
-```
-
-**Operational Tables:**
-```sql
+-- Reports table
 reports (
-    report_id UUID PRIMARY KEY,
-    user_id VARCHAR(50),
-    report_type VARCHAR(100),
-    parameters JSON,
-    generated_at TIMESTAMP,
-    status VARCHAR(20)
-)
+  id UUID PRIMARY KEY,
+  organization_id UUID REFERENCES organizations(id),
+  report_type VARCHAR(100) NOT NULL,
+  period_start DATE NOT NULL,
+  period_end DATE NOT NULL,
+  data JSONB NOT NULL,
+  ai_insights JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  expires_at TIMESTAMP NOT NULL
+);
 
-report_artifacts (
-    artifact_id UUID PRIMARY KEY,
-    report_id UUID,
-    format VARCHAR(20),
-    file_path VARCHAR(500),
-    created_at TIMESTAMP
-)
+-- AI Insights table
+ai_insights (
+  id UUID PRIMARY KEY,
+  report_id UUID REFERENCES reports(id),
+  insight_type VARCHAR(50) NOT NULL,
+  confidence_score DECIMAL(3,2) NOT NULL,
+  explanation TEXT NOT NULL,
+  recommendation TEXT,
+  status VARCHAR(20) DEFAULT 'pending', -- pending, approved, rejected
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
-ai_alerts (
-    alert_id UUID PRIMARY KEY,
-    report_id UUID,
-    data_point VARCHAR(200),
-    recommendation TEXT,
-    status VARCHAR(20),
-    created_at TIMESTAMP,
-    approved_by VARCHAR(50)
-)
-
-data_pull_log (
-    pull_id UUID PRIMARY KEY,
-    source_system VARCHAR(50),
-    records_processed INT,
-    status VARCHAR(20),
-    started_at TIMESTAMP,
-    completed_at TIMESTAMP
-)
+-- Audit Logs table
+audit_logs (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL,
+  action_type VARCHAR(100) NOT NULL,
+  resource_type VARCHAR(100),
+  resource_id UUID,
+  details JSONB,
+  ip_address INET,
+  user_agent TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
 ```
 
-**Indexing Strategy:**
-- **Covering Index:** (org_id, time_key, metric_type) for fast metric queries
-- **Partition Pruning:** Time-based partitioning for long-range queries
-- **Composite Indexes:** (user_id, report_type) for user-specific reports
+**Data Retention Policy:**
+- Cache: 30 days automatic expiration
+- Database: 5 years retention
+- Automatic deletion after retention period
+
+### Microservice Integration Architecture
+
+#### API Gateway Configuration
+**Authentication:** JWT validation through AUTH microservice
+**Authorization:** Administrator role-only access
+**Rate Limiting:** 100 requests/minute per user
+**Circuit Breaker:** 5 failures trigger circuit open
+**Retry Policy:** Exponential backoff (1s, 2s, 4s, 8s)
+
+#### External Microservice Adapters
+```typescript
+// Port definition in Domain layer
+interface MicroservicePort {
+  getUserData(orgId: string): Promise<UserData[]>;
+  getCourseData(orgId: string): Promise<CourseData[]>;
+  getAssessmentData(orgId: string): Promise<AssessmentData[]>;
+  getSkillData(orgId: string): Promise<SkillData[]>;
+  getExerciseData(orgId: string): Promise<ExerciseData[]>;
+  getAnalyticsData(orgId: string): Promise<AnalyticsData[]>;
+}
+
+// Adapter implementation in Infrastructure layer
+class DirectoryAdapter implements MicroservicePort {
+  async getUserData(orgId: string): Promise<UserData[]> {
+    // Implementation with error handling, retry logic
+  }
+}
+```
+
+#### Error Handling Strategy
+**Timeout Configuration:** 30 seconds per microservice call
+**Retry Logic:** 3 attempts with exponential backoff
+**Fallback Behavior:** Display last cached data with "data not updated" indicator
+**Circuit Breaker:** Prevent cascading failures
 
 ### AI Integration Architecture
 
-#### AI Recommendation Engine
-**Architecture:** Application service behind stable port interface
-**Components:**
-- **AIInsightsService:** Core AI analysis service
-- **Request/Response Boundary:** Converts reporting payloads to AI format
-- **Domain Integration:** Returns domain-level insights for report generation
-- **Provider Abstraction:** Decouples from specific AI implementation
+#### Gemini AI Service Integration
+**Trigger:** Automatic after each report generation
+**Processing:** Synchronous with target latency < 5 seconds
+**Data:** Aggregated data only (no PII)
+**Fallback:** Report displayed without insights if AI fails
 
-**Integration Pattern:**
-- **Synchronous Analysis:** AI insights generated during report creation
-- **User Feedback Loop:** Approval/rejection patterns improve future recommendations
-- **Context Preservation:** AI recommendations linked to specific data points
+**AI Service Flow:**
+```
+Report Generated → Data Aggregation → Gemini API Call → Insight Processing → Confidence Filtering → Display Integration
+```
 
-### Scalability & Performance Architecture
-
-#### Horizontal Scaling Strategy
-**Stateless Services:** Interface and Application layers scale independently
-**Separate Scaling:** Ingestion workers, report builders, and AI services scale based on demand
-**Load Distribution:** API Gateway routes requests across service instances
-
-#### Performance Optimization
-**Query Optimization:**
-- **Cache-First Strategy:** Recent data served from cache
-- **SQL Fallback:** Historical data and drill-downs from database
-- **Aggregate Pre-computation:** Common metrics pre-calculated during ingestion
-
-**Concurrency Management:**
-- **Idempotent Operations:** Safe concurrent data ingestion
-- **Parallel Processing:** Per-source ingestion to avoid contention
-- **Connection Pooling:** Efficient database and cache connections
+**Insight Processing:**
+- Confidence threshold: 85%
+- Insight types: Anomaly detection, trend analysis, strategic recommendations
+- Storage: Insights stored with report data
+- Approval workflow: Manual approval/rejection required
 
 ### Security Architecture
 
 #### Authentication & Authorization
-**Integration:** Seamless integration with existing AUTH microservice
-**Pattern:** JWT token validation through API Gateway
-**Role-Based Access:** Administrator (full access) vs HR Employee (limited access)
+**JWT Validation:** Through API Gateway and AUTH microservice
+**Role-Based Access:** Administrator role only
+**Token Expiry:** 8-hour session duration
+**Refresh Strategy:** Automatic token refresh
 
-#### Data Protection
-**Confidentiality:** PII filtering during ingestion, aggregated data display only
-**Integrity:** Data validation and consistency checks
-**Privacy:** User-specific data isolation and access controls
+#### Data Security
+**Encryption in Transit:** HTTPS with TLS 1.3
+**Encryption at Rest:** Database and cache encryption
+**PII Protection:** Automatic filtering before storage
+**Audit Logging:** All critical actions logged
 
-#### Audit & Compliance
-**Logging:** Comprehensive audit trails for all system actions
-**Transparency:** Key operations logged with user context
-**Flexibility:** Adaptable to evolving compliance requirements
+#### Security Controls
+```typescript
+// Security middleware
+const securityMiddleware = {
+  authenticate: (req, res, next) => {
+    // JWT validation
+  },
+  authorize: (req, res, next) => {
+    // Role-based access control
+  },
+  audit: (req, res, next) => {
+    // Audit logging
+  }
+};
+```
 
-### Integration Architecture
+### Scalability & Performance Strategy
 
-#### Contract-Driven Integration
-**Approach:** Flexible, technology-agnostic interfaces
-**Versioning:** Support for graceful evolution over time
-**Resilience:** Error handling, retries, and timeouts consistent with platform standards
+#### Horizontal Scaling
+**Load Balancer:** Distributes traffic across multiple instances
+**Stateless Design:** No session state stored in application
+**Database Scaling:** Read replicas for report queries
+**Cache Scaling:** Redis cluster for high availability
 
-#### External Service Integration
-**Microservice Clients:** Standardized clients for six data sources
-**API Design:** Use-case oriented capabilities with clear contracts
-**Error Handling:** Consistent retry mechanisms and failure modes
+#### Performance Optimization
+**Caching Strategy:** Cache-aside pattern with 30-day TTL
+**Data Compression:** Large payloads compressed in cache
+**Query Optimization:** Indexed database queries
+**Connection Pooling:** Persistent database connections
 
-#### Observability
-**Logging:** Structured logs for debugging and monitoring
-**Metrics:** Performance and usage metrics
-**Tracing:** Request flow tracking across services
-**Health Checks:** Service health monitoring and alerting
+#### Monitoring & Observability
+**Metrics:** Response times, error rates, cache hit ratio
+**Logging:** Structured logs with correlation IDs
+**Alerting:** Automated alerts for performance degradation
+**Health Checks:** Service health monitoring
 
 ### Deployment Architecture
 
-#### Service Deployment
-**Containerization:** Docker containers for consistent deployment
-**Orchestration:** Kubernetes for service management and scaling
-**Configuration:** Environment-specific configuration management
+#### Environment Configuration
+**Development:** Local development with Docker Compose
+**Staging:** Cloud-based staging environment
+**Production:** High-availability production deployment
 
-#### Data Deployment
-**Database:** Managed SQL service with automated backups
-**Cache:** Managed Redis cluster with high availability
-**Storage:** Object storage for report artifacts and logs
+#### Infrastructure Components
+**Application Server:** Node.js with Express
+**Database:** PostgreSQL (Supabase)
+**Cache:** Redis cluster
+**Load Balancer:** Nginx or cloud load balancer
+**Monitoring:** Application performance monitoring
 
-### Monitoring & Observability
+#### CI/CD Pipeline
+**Source Control:** Git with feature branching
+**Build Process:** Automated testing and building
+**Deployment:** Blue-green deployment strategy
+**Rollback:** Automated rollback capability
 
-#### Health Monitoring
-**Service Health:** Endpoint health checks and dependency monitoring
-**Data Health:** Data quality metrics and processing status
-**Performance:** Response times, throughput, and error rates
+### Data Flow Diagrams
 
-#### Alerting
-**System Alerts:** Service failures, data processing issues
-**Business Alerts:** AI-generated insights and recommendations
-**Compliance Alerts:** Security violations, data access anomalies
+#### System Overview
+```
+[User] → [API Gateway] → [Application Layer] → [Domain Layer] → [Infrastructure Layer]
+                                                                    ↓
+[External Microservices] ← [Adapters] ← [Ports] ← [Use Cases] ← [Entities]
+                                                                    ↓
+[Cache (Redis)] ← [Repositories] ← [Data Access] ← [Services] ← [Controllers]
+                                                                    ↓
+[Database (PostgreSQL)] ← [Persistence] ← [Storage] ← [Domain Events]
+```
+
+#### Report Generation Flow
+```
+[User Request] → [Authentication] → [Authorization] → [Data Collection] → [Transformation] → [Report Generation] → [AI Analysis] → [Cache Storage] → [Response]
+```
+
+#### Data Synchronization Flow
+```
+[Scheduler] → [Parallel Data Collection] → [PII Filtering] → [Normalization] → [Aggregation] → [Cache Update] → [Archive to Database]
+```
+
+### Compliance & Governance
+
+#### Data Governance
+**Data Classification:** Sensitive business data
+**Retention Policy:** 30-day cache, 5-year database
+**Access Control:** Executive management only
+**Audit Trail:** Complete action logging
+
+#### Compliance Requirements
+**Data Privacy:** PII filtering and aggregation
+**Security Standards:** TLS 1.3, encrypted storage
+**Audit Requirements:** 12-month log retention
+**Backup Strategy:** Automated daily backups
 
 ---
+*This System & Data Architecture document provides the technical foundation for implementing the Management Reporting microservice with scalability, security, and compliance requirements.*
 
-**Document Status:** ✅ System Architecture Complete  
-**Next Phase:** Delivery & Tooling  
-**Created:** [Current Date]  
-**Approved By:** System Architecture Team
