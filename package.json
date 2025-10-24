@@ -7,18 +7,14 @@
     "start": "node server.js",
     "dev": "node server.js",
     "build": "npm run build:frontend",
-    "build:frontend": "npm run install:frontend && npm run build:frontend-only",
-    "build:frontend-only": "cd frontend && npm run build",
-    "install-all": "npm install && npm run install:frontend",
-    "install:frontend": "cd frontend && npm install"
+    "build:frontend": "cd frontend && npm install && npm run build",
+    "install-all": "npm install && cd frontend && npm install"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "helmet": "^7.1.0",
     "express-rate-limit": "^7.1.5",
-    "winston": "^3.11.0",
-    "html2canvas": "^1.4.1",
-    "jspdf": "^3.0.3"
+    "winston": "^3.11.0"
   }
 }
