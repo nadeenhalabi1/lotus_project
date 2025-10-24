@@ -7,8 +7,10 @@
     "start": "node server.js",
     "dev": "node server.js",
     "build": "npm run build:frontend",
-    "build:frontend": "cd frontend && npm install && npm run build",
-    "install-all": "npm install && cd frontend && npm install"
+    "build:frontend": "npm run install:frontend && npm run build:frontend-only",
+    "build:frontend-only": "cd frontend && npm run build",
+    "install-all": "npm install && npm run install:frontend",
+    "install:frontend": "cd frontend && npm install"
   },
   "dependencies": {
     "cors": "^2.8.5",
