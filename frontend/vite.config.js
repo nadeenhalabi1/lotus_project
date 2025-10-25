@@ -24,6 +24,7 @@ export default defineConfig({
           vendor: ['react', 'react-dom'],
           charts: ['chart.js', 'react-chartjs-2'],
           router: ['react-router-dom'],
+          pdf: ['jspdf', 'html2canvas'],
         },
       },
     },

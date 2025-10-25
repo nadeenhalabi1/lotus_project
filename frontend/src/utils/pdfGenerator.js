@@ -1,13 +1,8 @@
-// Dynamic imports to avoid build issues
-let jsPDF, html2canvas;
+// Static imports for better build compatibility
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 const loadPDFLibraries = async () => {
-  if (!jsPDF) {
-    jsPDF = (await import('jspdf')).default;
-  }
-  if (!html2canvas) {
-    html2canvas = (await import('html2canvas')).default;
-  }
   return { jsPDF, html2canvas };
 };
 

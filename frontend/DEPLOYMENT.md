@@ -2,46 +2,44 @@
 
 ## Vercel Deployment
 
-This frontend is configured for deployment on Vercel as part of a monorepo structure.
+This frontend is configured for deployment on Vercel as a standalone application.
 
 ### Project Structure
 ```
-lotus_project/
-├── vercel.json          # Main deployment config
+frontend/
+├── vercel.json          # Deployment configuration
 ├── .vercelignore        # Files to exclude
-├── package.json         # Root package with vercel-build script
-└── frontend/            # Frontend application
-    ├── package.json     # Frontend dependencies
-    ├── vite.config.js   # Vite configuration
-    └── dist/            # Build output
+├── package.json         # Frontend dependencies
+├── vite.config.js       # Vite configuration
+└── dist/                # Build output
 ```
 
 ### Configuration Files
 
-1. **vercel.json** (root) - Contains deployment configuration
-2. **package.json** (root) - Contains `vercel-build` script
-3. **frontend/vite.config.js** - Configured with `base: './'` for relative paths
-4. **.vercelignore** (root) - Excludes unnecessary files from deployment
+1. **vercel.json** - Contains deployment configuration
+2. **package.json** - Contains build scripts
+3. **vite.config.js** - Configured with `base: './'` for relative paths
+4. **.vercelignore** - Excludes unnecessary files from deployment
 
 ### Build Process
 
-The project uses a custom build process:
-- Root `package.json` contains `vercel-build` script
-- Script navigates to frontend folder and runs build
-- Output directory: `frontend/dist`
+The project uses standard Vite build process:
+- Build Command: `npm run build`
+- Output directory: `dist`
 - Base path: `./` (relative paths)
+- Source maps enabled
 
 ### Deployment Steps
 
 1. **Connect to Vercel:**
    - Go to [vercel.com](https://vercel.com)
    - Import your GitHub repository
-   - **Important**: Select the **root directory** (not frontend folder)
+   - **Important**: Select the **frontend folder** as the root directory
 
 2. **Build Settings:**
    - Framework: Vite
-   - Build Command: `npm run vercel-build`
-   - Output Directory: `frontend/dist`
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
    - Install Command: `npm install`
 
 3. **Environment Variables (if needed):**
@@ -53,7 +51,9 @@ If you encounter deployment errors:
 
 1. **Check build locally:**
    ```bash
-   npm run vercel-build
+   cd frontend
+   npm install
+   npm run build
    ```
 
 2. **Verify file paths:**
@@ -67,7 +67,7 @@ If you encounter deployment errors:
 
 ### Common Issues Fixed
 
-- ✅ Monorepo structure support
+- ✅ Standalone frontend deployment
 - ✅ Correct package.json path resolution
 - ✅ Relative asset paths (`base: './'` in vite.config.js)
 - ✅ Proper rewrites for SPA routing
@@ -76,8 +76,8 @@ If you encounter deployment errors:
 
 ### Important Notes
 
-- **Root Directory**: Always select the root directory in Vercel, not the frontend folder
-- **Build Command**: Uses `npm run vercel-build` which handles the frontend build
-- **Output Directory**: Points to `frontend/dist` where the built files are located
+- **Root Directory**: Select the **frontend folder** in Vercel, not the root directory
+- **Build Command**: Uses `npm run build` directly
+- **Output Directory**: Points to `dist` where the built files are located
 
 The application should now deploy successfully on Vercel!
