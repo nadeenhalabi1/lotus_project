@@ -1,6 +1,11 @@
 // API Configuration
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+// Log the API URL for debugging (only in development)
+if (import.meta.env.DEV) {
+  console.log('API Base URL:', API_BASE_URL);
+}
+
 export const API_ENDPOINTS = {
   // Microservices endpoints
   MICROSERVICES: {
