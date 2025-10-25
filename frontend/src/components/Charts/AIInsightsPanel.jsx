@@ -11,7 +11,7 @@ const AIInsightsPanel = () => {
 
   const fetchInsights = async () => {
     try {
-      const response = await fetch(API_ENDPOINTS.MICROSERVICES.ANALYTICS_INSIGHTS);
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/microservices/analytics/insights`);
       const data = await response.json();
       
       if (data.success) {

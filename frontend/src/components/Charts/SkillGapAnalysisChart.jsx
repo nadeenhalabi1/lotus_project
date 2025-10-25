@@ -33,7 +33,7 @@ const SkillGapAnalysisChart = () => {
 
   const fetchSkillGapData = async () => {
     try {
-      const response = await fetch(API_ENDPOINTS.MICROSERVICES.ANALYTICS_SKILL_GAPS);
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/microservices/analytics/skill-gaps`);
       const data = await response.json();
       
       if (data.success) {

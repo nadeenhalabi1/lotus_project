@@ -41,17 +41,17 @@ const DashboardCharts = () => {
       setLoading(true);
       
       // Fetch course data
-      const courseResponse = await fetch(API_ENDPOINTS.ENHANCED.COURSEBUILDER_COURSES);
+      const courseResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/enhanced/coursebuilder/courses?normalize=true`);
       const courseResult = await courseResponse.json();
       setCourseData(courseResult.data);
 
       // Fetch assessment data
-      const assessmentResponse = await fetch(API_ENDPOINTS.ENHANCED.ASSESSMENT_TESTS);
+      const assessmentResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/enhanced/assessment/tests?normalize=true`);
       const assessmentResult = await assessmentResponse.json();
       setAssessmentData(assessmentResult.data);
 
       // Fetch skill data
-      const skillResponse = await fetch(API_ENDPOINTS.ENHANCED.LEARNERAI_SKILLS);
+      const skillResponse = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/enhanced/learnerai/skills/proficiency/0.7?normalize=true`);
       const skillResult = await skillResponse.json();
       setSkillData(skillResult.data);
 

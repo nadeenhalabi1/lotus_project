@@ -40,7 +40,7 @@ const CourseEnrollmentChart = () => {
 
   const fetchChartData = async () => {
     try {
-      const response = await fetch(API_ENDPOINTS.MICROSERVICES.COURSEBUILDER_COURSES);
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/microservices/coursebuilder/courses`);
       const data = await response.json();
       
       if (data.success) {

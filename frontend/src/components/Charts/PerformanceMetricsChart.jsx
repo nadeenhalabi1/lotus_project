@@ -32,7 +32,7 @@ const PerformanceMetricsChart = () => {
 
   const fetchMetricsData = async () => {
     try {
-      const response = await fetch(API_ENDPOINTS.MICROSERVICES.DASHBOARD_OVERVIEW);
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/microservices/dashboard/overview`);
       const data = await response.json();
       
       if (data.success) {
