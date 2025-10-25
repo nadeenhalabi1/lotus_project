@@ -1,5 +1,4 @@
 node_modules
-src
 *.test.js
 *.test.jsx
 *.spec.js
