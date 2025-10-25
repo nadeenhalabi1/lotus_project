@@ -2,7 +2,7 @@
   "name": "lotus-project",
   "version": "1.0.0",
   "description": "Lotus Project - Full Stack Application",
-  "main": "backend/server.js",
+  "main": "server.js",
   "scripts": {
     "start": "cd backend && npm start",
     "dev": "cd backend && npm run dev",
