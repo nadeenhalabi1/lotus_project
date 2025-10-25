@@ -13,6 +13,10 @@ const reportRoutes = require('./src/interfaces/routes/reports');
 const insightRoutes = require('./src/interfaces/routes/insights');
 const logoRoutes = require('./src/interfaces/routes/logo');
 
+// Import microservices routes
+const microservicesRoutes = require('./src/routes/microservices');
+const enhancedMicroservicesRoutes = require('./src/routes/enhancedMicroservices');
+
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
@@ -59,6 +63,10 @@ app.use('/api/dashboards', dashboardRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/insights', insightRoutes);
 app.use('/api/logo', logoRoutes);
+
+// Microservices routes
+app.use('/api/microservices', microservicesRoutes);
+app.use('/api/enhanced', enhancedMicroservicesRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
