@@ -13,6 +13,7 @@ import {
   Filler
 } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
+import { API_ENDPOINTS } from '../../config/api';
 import { format } from 'date-fns';
 
 // Register Chart.js components
@@ -39,7 +40,7 @@ const CourseEnrollmentChart = () => {
 
   const fetchChartData = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/microservices/coursebuilder/courses');
+      const response = await fetch(API_ENDPOINTS.MICROSERVICES.COURSEBUILDER_COURSES);
       const data = await response.json();
       
       if (data.success) {

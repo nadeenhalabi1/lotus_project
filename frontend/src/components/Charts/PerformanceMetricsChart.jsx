@@ -10,6 +10,7 @@ import {
   ArcElement
 } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
+import { API_ENDPOINTS } from '../../config/api';
 
 ChartJS.register(
   CategoryScale,
@@ -31,7 +32,7 @@ const PerformanceMetricsChart = () => {
 
   const fetchMetricsData = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/microservices/dashboard/overview');
+      const response = await fetch(API_ENDPOINTS.MICROSERVICES.DASHBOARD_OVERVIEW);
       const data = await response.json();
       
       if (data.success) {

@@ -12,6 +12,7 @@ import {
   ArcElement
 } from 'chart.js';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
+import { API_ENDPOINTS } from '../../config/api';
 import { generateEnhancedPDF } from '../../utils/pdfGenerator';
 
 // Register Chart.js components
@@ -40,17 +41,17 @@ const DashboardCharts = () => {
       setLoading(true);
       
       // Fetch course data
-      const courseResponse = await fetch('http://localhost:3001/api/enhanced/coursebuilder/courses?normalize=true');
+      const courseResponse = await fetch(API_ENDPOINTS.ENHANCED.COURSEBUILDER_COURSES);
       const courseResult = await courseResponse.json();
       setCourseData(courseResult.data);
 
       // Fetch assessment data
-      const assessmentResponse = await fetch('http://localhost:3001/api/enhanced/assessment/tests?normalize=true');
+      const assessmentResponse = await fetch(API_ENDPOINTS.ENHANCED.ASSESSMENT_TESTS);
       const assessmentResult = await assessmentResponse.json();
       setAssessmentData(assessmentResult.data);
 
       // Fetch skill data
-      const skillResponse = await fetch('http://localhost:3001/api/enhanced/learnerai/skills/proficiency/0.7?normalize=true');
+      const skillResponse = await fetch(API_ENDPOINTS.ENHANCED.LEARNERAI_SKILLS);
       const skillResult = await skillResponse.json();
       setSkillData(skillResult.data);
 

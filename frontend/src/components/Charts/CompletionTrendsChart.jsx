@@ -11,6 +11,7 @@ import {
   Filler
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import { API_ENDPOINTS } from '../../config/api';
 import { format } from 'date-fns';
 
 ChartJS.register(
@@ -34,7 +35,7 @@ const CompletionTrendsChart = () => {
 
   const fetchTrendsData = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/microservices/analytics/trends');
+      const response = await fetch(API_ENDPOINTS.MICROSERVICES.ANALYTICS_TRENDS);
       const data = await response.json();
       
       if (data.success) {

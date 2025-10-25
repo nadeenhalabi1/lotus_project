@@ -10,6 +10,7 @@ import {
   ArcElement
 } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
+import { API_ENDPOINTS } from '../../config/api';
 
 ChartJS.register(
   CategoryScale,
@@ -32,7 +33,7 @@ const SkillGapAnalysisChart = () => {
 
   const fetchSkillGapData = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/microservices/analytics/skill-gaps');
+      const response = await fetch(API_ENDPOINTS.MICROSERVICES.ANALYTICS_SKILL_GAPS);
       const data = await response.json();
       
       if (data.success) {

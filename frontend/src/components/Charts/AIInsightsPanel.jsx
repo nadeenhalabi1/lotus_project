@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_ENDPOINTS } from '../../config/api';
 
 const AIInsightsPanel = () => {
   const [insights, setInsights] = useState([]);
@@ -10,7 +11,7 @@ const AIInsightsPanel = () => {
 
   const fetchInsights = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/microservices/analytics/insights');
+      const response = await fetch(API_ENDPOINTS.MICROSERVICES.ANALYTICS_INSIGHTS);
       const data = await response.json();
       
       if (data.success) {
