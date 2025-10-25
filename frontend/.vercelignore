@@ -1,6 +1,9 @@
-backend
 node_modules
-*.md
+src
+*.test.js
+*.test.jsx
+*.spec.js
+*.spec.jsx
 tests
 coverage
 .env.local
