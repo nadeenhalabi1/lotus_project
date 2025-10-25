@@ -6,7 +6,7 @@ const router = express.Router();
 // Logo endpoint for light mode
 router.get('/light', (req, res) => {
   try {
-    const logoPath = 'C:\\Users\\nadin\\Desktop\\lotus_project\\lotus_project\\backend\\logo\\logo-light.jpg';
+    const logoPath = path.join(__dirname, '../../logo/logo-light.jpg');
     
     // Check if file exists
     if (!fs.existsSync(logoPath)) {
@@ -28,7 +28,7 @@ router.get('/light', (req, res) => {
 // Logo endpoint for dark mode
 router.get('/dark', (req, res) => {
   try {
-    const logoPath = 'C:\\Users\\nadin\\Desktop\\lotus_project\\lotus_project\\backend\\logo\\logo-dark.jpg';
+    const logoPath = path.join(__dirname, '../../logo/logo-dark.jpg');
     
     // Check if file exists
     if (!fs.existsSync(logoPath)) {
