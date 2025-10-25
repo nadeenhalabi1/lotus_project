@@ -1,0 +1,18 @@
+# Ignore root package.json - use backend/package.json instead
+package.json
+package-lock.json
+
+# Ignore other root files that might confuse Railway
+Procfile
+server.js
+src/
+
+# Ignore frontend files
+frontend/
+FRONTEND/
+
+# Ignore documentation files
+*.md
+
+# Ignore other root files
+node_modules/
