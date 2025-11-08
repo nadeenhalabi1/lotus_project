@@ -1,0 +1,10 @@
+* [33m1e3ae84[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mchore/ci-cd-setup[m[33m, [m[1;31morigin/chore/ci-cd-setup[m[33m)[m feat: Add CI/CD workflows for Vercel and Railway deployment
+* [33m797dba9[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m, [m[1;32mmain[m[33m)[m Add microservices routes to app.js to fix 404 errors
+* [33m62dd88a[m Update all API calls to use environment variable directly for local and cloud compatibility
+* [33m91f519f[m Add environment files for both local and production API configuration
+* [33m004ad13[m Configure API endpoints to use VITE_API_URL environment variable for Railway integration
+* [33m86c02e6[m Update package.json
+* [33mfcb9a1a[m Remove root package.json and configure Railway to use backend directory directly
+* [33m2dd8657[m Fix package.json: add main field and remove workspaces for better deployment
+* [33m7e75654[m Fix package.json main field for Railway deployment
+* [33m57196d8[m Update package.json configuration for Railway deployment

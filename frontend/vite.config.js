@@ -3,36 +3,18 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: './',
   server: {
-    port: 3000,
-    host: true,
+    port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-        secure: false,
-      },
-    },
+        target: 'http://localhost:3000',
+        changeOrigin: true
+      }
+    }
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          charts: ['chart.js', 'react-chartjs-2'],
-          router: ['react-router-dom'],
-          pdf: ['jspdf', 'html2canvas'],
-        },
-      },
-    },
-  },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./src/setupTests.js'],
-  },
+    sourcemap: true
+  }
 });
 
