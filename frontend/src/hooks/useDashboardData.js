@@ -83,8 +83,14 @@ export const useDashboardData = () => {
           console.error('Retry failed:', retryErr);
         }
       } else {
-        setError(err.response?.data?.error || 'Failed to load dashboard');
-        console.error('Dashboard fetch error:', err);
+        const errorMessage = err.response?.data?.error || err.message || 'Failed to load dashboard';
+        setError(errorMessage);
+        console.error('Dashboard fetch error:', {
+          error: err,
+          message: errorMessage,
+          response: err.response,
+          config: err.config
+        });
       }
     } finally {
       setLoading(false);

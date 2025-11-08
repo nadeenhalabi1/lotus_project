@@ -43,6 +43,13 @@ api.interceptors.response.use(
       localStorage.removeItem('authToken');
       window.location.href = '/login';
     }
+    // Log errors for debugging
+    console.error('API Error:', {
+      url: error.config?.url,
+      status: error.response?.status,
+      message: error.message,
+      baseURL: API_URL
+    });
     return Promise.reject(error);
   }
 );
