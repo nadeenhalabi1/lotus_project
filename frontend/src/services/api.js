@@ -3,6 +3,11 @@ import axios from 'axios';
 // Get base URL from environment, default to localhost
 let baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+// Log API URL for debugging (only in development)
+if (import.meta.env.DEV) {
+  console.log('🔗 API Base URL:', baseURL);
+}
+
 // Ensure base URL doesn't end with slash
 baseURL = baseURL.replace(/\/$/, '');
 
@@ -12,6 +17,9 @@ if (!baseURL.endsWith('/api/v1')) {
 }
 
 const API_URL = baseURL;
+
+// Log final API URL
+console.log('🔗 Final API URL:', API_URL);
 
 const api = axios.create({
   baseURL: API_URL,

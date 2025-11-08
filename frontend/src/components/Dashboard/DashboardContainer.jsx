@@ -53,16 +53,44 @@ const DashboardContainer = () => {
     setBoxOpen(false);
   };
 
+  // Debug logging
+  useEffect(() => {
+    console.log('📊 Dashboard State:', {
+      loading,
+      hasData: !!data,
+      chartsCount: data?.charts?.length || 0,
+      error,
+      lastUpdated
+    });
+  }, [loading, data, error, lastUpdated]);
+
   if (loading && !data) {
     return <LoadingSpinner />;
   }
 
   if (error && !data) {
-    return <ErrorMessage message={error} onRetry={refresh} />;
+    return (
+      <div>
+        <ErrorMessage message={error} onRetry={refresh} />
+        <div className="mt-4 text-center text-sm text-gray-500">
+          <p>Check Console (F12) for detailed error information</p>
+          <p>API URL: {import.meta.env.VITE_API_URL || 'Not set - using localhost'}</p>
+        </div>
+      </div>
+    );
   }
 
   if (!data || !data.charts || data.charts.length === 0) {
-    return <EmptyState message="No dashboard data available" />;
+    return (
+      <div>
+        <EmptyState message="No dashboard data available" />
+        <div className="mt-4 text-center">
+          <button onClick={refresh} className="btn-primary">
+            Load Data
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const showPartialBanner = refreshStatus?.status === 'partial';
