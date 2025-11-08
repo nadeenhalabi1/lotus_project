@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDashboardData } from '../../hooks/useDashboardData';
 import ChartGrid from './ChartGrid';
