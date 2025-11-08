@@ -12,20 +12,24 @@ export default defineConfig({
       }
     }
   },
+  resolve: {
+    alias: {
+      'html2canvas': 'html2canvas/dist/html2canvas.esm.js'
+    }
+  },
   build: {
     outDir: 'dist',
     sourcemap: true,
     commonjsOptions: {
-      include: [/html2canvas/, /node_modules/]
-    },
-    rollupOptions: {
-      output: {
-        manualChunks: undefined
-      }
+      include: [/html2canvas/, /node_modules/],
+      transformMixedEsModules: true
     }
   },
   optimizeDeps: {
-    include: ['html2canvas']
+    include: ['html2canvas'],
+    esbuildOptions: {
+      plugins: []
+    }
   }
 });
 
