@@ -47,8 +47,8 @@ export class DashboardController {
         return false;
       });
 
-      // If no data available, try to load it automatically (only in development)
-      if (priorityCharts.length === 0 && process.env.NODE_ENV === 'development') {
+      // If no data available, try to load it automatically (for MVP - both dev and production)
+      if (priorityCharts.length === 0) {
         console.log('No dashboard data found, auto-loading mock data...');
         try {
           const token = req.headers.authorization?.substring(7) || process.env.MICROSERVICE_JWT_TOKEN || 'test-token-for-local-development';
