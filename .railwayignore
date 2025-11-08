@@ -1,0 +1,10 @@
+frontend/
+node_modules/
+.git/
+*.log
+.DS_Store
+.vscode/
+.idea/
+coverage/
+tests/
+

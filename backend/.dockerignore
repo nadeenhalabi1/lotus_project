@@ -1,0 +1,18 @@
+node_modules
+npm-debug.log
+.yarn
+.pnpm
+.DS_Store
+.git
+tests
+coverage
+*.log
+.env
+.env.local
+.env.*.local
+.vscode
+.idea
+# אם זה מונורפו וה-Service Path לא מצביע ל-backend,
+# ודאי שה-frontend לא נכנס לקונטקסט:
+../frontend
+
