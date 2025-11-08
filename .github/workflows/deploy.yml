@@ -1,0 +1,143 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  ci_check:
+    name: Verify CI passed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify CI status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: runs } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ci.yml',
+              branch: context.ref.replace('refs/heads/', ''),
+              per_page: 1
+            });
+
+            if (runs.workflow_runs.length === 0) {
+              core.setFailed('No CI runs found. Please ensure CI workflow exists and has run.');
+              return;
+            }
+
+            const latestRun = runs.workflow_runs[0];
+            if (latestRun.status !== 'completed' || latestRun.conclusion !== 'success') {
+              core.setFailed(`CI has not passed. Latest run: ${latestRun.status}/${latestRun.conclusion}`);
+              return;
+            }
+
+            console.log('✅ CI check passed');
+
+  deploy_frontend:
+    name: Deploy Frontend to Vercel
+    needs: ci_check
+    runs-on: ubuntu-latest
+    environment:
+      name: production-frontend
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Vercel CLI
+        run: npx vercel --version
+
+      - name: Pull Vercel environment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          mkdir -p .vercel
+          echo "{\"projectId\":\"$VERCEL_PROJECT_ID\",\"orgId\":\"$VERCEL_ORG_ID\"}" > .vercel/project.json
+          npx vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build for production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+        run: |
+          npx vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+      - name: Deployment summary
+        run: |
+          echo "✅ Frontend deployed to Vercel"
+          echo "🔗 Check deployment at: https://${{ secrets.VERCEL_PROJECT_ID }}.vercel.app"
+
+  deploy_backend:
+    name: Deploy Backend to Railway
+    needs: ci_check
+    runs-on: ubuntu-latest
+    environment:
+      name: production-backend
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+
+      - name: Verify Railway CLI
+        run: railway --version
+
+      - name: Login to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway login --token "$RAILWAY_TOKEN"
+
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up
+
+      - name: Verify deployment
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        continue-on-error: true
+        run: |
+          echo "✅ Backend deployed to Railway"
+          echo "🔗 Check health endpoint at your Railway URL/health"
+
