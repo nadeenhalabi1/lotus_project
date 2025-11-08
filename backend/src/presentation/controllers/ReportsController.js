@@ -41,7 +41,7 @@ export class ReportsController {
   async generateReport(req, res, next) {
     try {
       const { reportType, format = 'json', chartImages = {}, ...options } = req.body;
-      const userId = req.user?.userId || req.user?.sub;
+      const userId = req.user?.userId || req.user?.sub || 'mvp-user';
 
       if (!reportType) {
         return res.status(400).json({ error: 'reportType is required' });
@@ -74,7 +74,7 @@ export class ReportsController {
         });
       }
     } catch (error) {
-      const userId = req.user?.userId || req.user?.sub;
+      const userId = req.user?.userId || req.user?.sub || 'mvp-user';
       auditLogger.logReportGeneration(userId, req.body?.reportType || 'unknown', 'failure', {
         error: error.message
       });

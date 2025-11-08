@@ -286,7 +286,7 @@ export class DashboardController {
   async downloadChartPDF(req, res, next) {
     try {
       const { chartId } = req.params;
-      const userId = req.user?.userId || req.user?.sub;
+      const userId = req.user?.userId || req.user?.sub || 'mvp-user';
       const chartImage = req.body?.chartImage || null; // Base64 image from frontend
 
       console.log(`[PDF] Starting PDF generation for chart: ${chartId}`);
