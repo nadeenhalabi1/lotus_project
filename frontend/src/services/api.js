@@ -29,12 +29,15 @@ const api = axios.create({
 });
 
 // Request interceptor for JWT token
+// For MVP: Token is optional - backend accepts requests without token
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('authToken');
+    // Only add token if it exists (optional for MVP)
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Continue even without token (for MVP)
     return config;
   },
   (error) => {

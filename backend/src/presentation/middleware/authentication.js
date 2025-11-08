@@ -20,12 +20,16 @@ export const authenticate = (req, res, next) => {
       }
     }
     
+    // For MVP: Allow requests without token (skip authentication)
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      auditLogger.logSecurityEvent('invalid_token_format', 'warn', {
-        ipAddress: req.ip,
-        userAgent: req.headers['user-agent']
-      });
-      return res.status(401).json({ error: 'No token provided' });
+      // Set default user for MVP (no authentication required)
+      req.user = {
+        userId: 'mvp-user',
+        sub: 'mvp-user',
+        role: 'System Administrator',
+        email: 'mvp@educoreai.com'
+      };
+      return next();
     }
 
     const token = authHeader.substring(7);

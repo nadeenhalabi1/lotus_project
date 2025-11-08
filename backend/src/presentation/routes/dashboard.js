@@ -6,9 +6,9 @@ import { BoxController } from '../controllers/BoxController.js';
 
 const router = express.Router();
 
-// Apply authentication and authorization to all routes
-router.use(authenticate);
-router.use(authorizeAdmin);
+// For MVP: Skip authentication - allow all requests
+// router.use(authenticate);
+// router.use(authorizeAdmin);
 
 const dashboardController = new DashboardController();
 const boxController = new BoxController();
