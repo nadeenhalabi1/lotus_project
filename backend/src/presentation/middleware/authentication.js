@@ -5,8 +5,10 @@ export const authenticate = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     
-    // In development, allow test token
-    if (process.env.NODE_ENV === 'development') {
+    // Allow test token in development OR if ALLOW_TEST_TOKEN is set (for MVP)
+    const allowTestToken = process.env.NODE_ENV === 'development' || process.env.ALLOW_TEST_TOKEN === 'true';
+    
+    if (allowTestToken) {
       if (authHeader === 'Bearer test-token-for-local-development') {
         req.user = {
           userId: 'test-admin-user',
@@ -28,8 +30,8 @@ export const authenticate = (req, res, next) => {
 
     const token = authHeader.substring(7);
     
-    // In development, allow test token
-    if (process.env.NODE_ENV === 'development' && token === 'test-token-for-local-development') {
+    // Allow test token in development OR if ALLOW_TEST_TOKEN is set (for MVP)
+    if (allowTestToken && token === 'test-token-for-local-development') {
       req.user = {
         userId: 'test-admin-user',
         sub: 'test-admin-user',
