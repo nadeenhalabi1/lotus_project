@@ -117,8 +117,9 @@ export class DashboardController {
       ];
 
       // Filter only priority charts for main dashboard (same as getDashboard)
+      // This includes: main service charts + combined charts marked as priority
       const priorityCharts = allCharts.filter(chart => {
-        // Include charts explicitly marked as priority
+        // Include charts explicitly marked as priority (includes combined charts)
         if (chart.metadata?.isPriority === true) {
           return true;
         }
@@ -137,6 +138,17 @@ export class DashboardController {
         // Include main service charts for priority services (directory, courseBuilder, assessment, learningAnalytics)
         const priorityServices = ['directory', 'courseBuilder', 'assessment', 'learningAnalytics'];
         if (priorityServices.includes(chart.metadata?.service)) {
+          return true;
+        }
+        // Include combined charts that are priority (even if not explicitly marked)
+        // These are the main combined charts for dashboard
+        const priorityCombinedChartIds = [
+          'combined-enrollments-comparison',
+          'combined-users-per-organization',
+          'combined-completion-rate-per-org',
+          'combined-top-courses'
+        ];
+        if (priorityCombinedChartIds.includes(chart.id)) {
           return true;
         }
         return false;
