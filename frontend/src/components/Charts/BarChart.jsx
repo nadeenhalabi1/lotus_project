@@ -43,10 +43,10 @@ const BarChart = ({ data, width = '100%', height = 200, colorScheme }) => {
         <CartesianGrid strokeDasharray="3 3" stroke={primaryColor} className="opacity-20" />
         <XAxis 
           dataKey="name" 
-          tick={{ fill: textColor, fontSize: 12, fontWeight: 500 }}
+          tick={{ fill: textColor, fontSize: 11, fontWeight: 500 }}
           angle={-45}
           textAnchor="end"
-          height={120}
+          height={140}
           interval={0}
           stroke={isDark ? '#6b7280' : primaryColor}
           strokeWidth={1}

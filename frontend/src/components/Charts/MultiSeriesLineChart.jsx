@@ -28,14 +28,15 @@ const MultiSeriesLineChart = ({ data, width = '100%', height = 200, colorScheme 
 
   return (
     <ResponsiveContainer width={width} height={height}>
-      <RechartsLineChart data={data}>
+      <RechartsLineChart data={data} margin={{ bottom: 120 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={primaryColor} className="opacity-20" />
         <XAxis 
           dataKey="name" 
-          tick={{ fill: textColor, fontSize: 13, fontWeight: 500 }}
+          tick={{ fill: textColor, fontSize: 11, fontWeight: 500 }}
           angle={-45}
           textAnchor="end"
-          height={80}
+          height={140}
+          interval={0}
           stroke={isDark ? '#6b7280' : primaryColor}
           strokeWidth={1}
         />

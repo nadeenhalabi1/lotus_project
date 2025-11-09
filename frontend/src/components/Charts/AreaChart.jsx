@@ -18,7 +18,7 @@ const AreaChart = ({ data, width = '100%', height = 200, colorScheme }) => {
 
   return (
     <ResponsiveContainer width={width} height={height}>
-      <RechartsAreaChart data={data}>
+      <RechartsAreaChart data={data} margin={{ bottom: 120 }}>
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor={primaryColor} stopOpacity={0.9} />
@@ -29,10 +29,11 @@ const AreaChart = ({ data, width = '100%', height = 200, colorScheme }) => {
         <CartesianGrid strokeDasharray="3 3" stroke={primaryColor} className="opacity-20" />
         <XAxis 
           dataKey="name" 
-          tick={{ fill: textColor, fontSize: 13, fontWeight: 500 }}
+          tick={{ fill: textColor, fontSize: 11, fontWeight: 500 }}
           angle={-45}
           textAnchor="end"
-          height={80}
+          height={140}
+          interval={0}
           stroke={isDark ? '#6b7280' : primaryColor}
           strokeWidth={1}
         />
