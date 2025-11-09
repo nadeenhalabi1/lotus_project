@@ -18,7 +18,7 @@ const AreaChart = ({ data, width = '100%', height = 200, colorScheme }) => {
 
   return (
     <ResponsiveContainer width={width} height={height}>
-      <RechartsAreaChart data={data} margin={{ bottom: 150, top: 20, left: 10, right: 10 }}>
+      <RechartsAreaChart data={data} margin={{ bottom: 100, top: 10, left: 5, right: 5 }}>
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="5%" stopColor={primaryColor} stopOpacity={0.9} />
@@ -29,17 +29,17 @@ const AreaChart = ({ data, width = '100%', height = 200, colorScheme }) => {
         <CartesianGrid strokeDasharray="3 3" stroke={primaryColor} className="opacity-20" />
         <XAxis 
           dataKey="name" 
-          tick={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
-          angle={-60}
+          tick={{ fill: textColor, fontSize: 12, fontWeight: 500 }}
+          angle={-45}
           textAnchor="end"
-          height={160}
+          height={120}
           interval={0}
           stroke={isDark ? '#6b7280' : primaryColor}
           strokeWidth={1}
           tickFormatter={(value) => {
-            // Truncate long labels to max 15 characters
-            if (value && value.length > 15) {
-              return value.substring(0, 15) + '...';
+            // Truncate long labels to max 20 characters
+            if (value && value.length > 20) {
+              return value.substring(0, 20) + '...';
             }
             return value;
           }}

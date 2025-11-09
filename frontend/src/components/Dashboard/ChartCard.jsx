@@ -29,7 +29,7 @@ const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
     const chartProps = {
       data: chart.data,
       width: '100%',
-      height: 400, // Increased from 200 to 400 for better visibility
+      height: 500, // Large and vibrant charts for dashboard
       colorScheme: colorScheme,
     };
 
@@ -104,7 +104,7 @@ const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
           </div>
         </div>
       </div>
-      <div className="h-[400px] mb-4">{renderChart()}</div>
+              <div className="h-[500px] mb-4">{renderChart()}</div>
       {chart.description && (
         <p className="mt-4 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
           {chart.description}
