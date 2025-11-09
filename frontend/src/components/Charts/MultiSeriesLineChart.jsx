@@ -28,17 +28,24 @@ const MultiSeriesLineChart = ({ data, width = '100%', height = 200, colorScheme 
 
   return (
     <ResponsiveContainer width={width} height={height}>
-      <RechartsLineChart data={data} margin={{ bottom: 120 }}>
+      <RechartsLineChart data={data} margin={{ bottom: 150, top: 20, left: 10, right: 10 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={primaryColor} className="opacity-20" />
         <XAxis 
           dataKey="name" 
-          tick={{ fill: textColor, fontSize: 11, fontWeight: 500 }}
-          angle={-45}
+          tick={{ fill: textColor, fontSize: 10, fontWeight: 500 }}
+          angle={-60}
           textAnchor="end"
-          height={140}
+          height={160}
           interval={0}
           stroke={isDark ? '#6b7280' : primaryColor}
           strokeWidth={1}
+          tickFormatter={(value) => {
+            // Truncate long labels to max 15 characters
+            if (value && value.length > 15) {
+              return value.substring(0, 15) + '...';
+            }
+            return value;
+          }}
         />
         <YAxis 
           tick={{ fill: textColor, fontSize: 13, fontWeight: 500 }}
