@@ -474,11 +474,24 @@ export class DashboardController {
       const courseBuilderData = await this.cacheRepository.getLatestByService('courseBuilder');
       const assessmentData = await this.cacheRepository.getLatestByService('assessment');
       
-      const courses = courseBuilderData?.data?.data?.details?.courses || 
-                      courseBuilderData?.data?.details?.courses || [];
+      // Helper function to get courses from nested structure
+      const getCourses = (data) => {
+        if (data?.data?.data?.details?.courses) return data.data.data.details.courses;
+        if (data?.data?.details?.courses) return data.data.details.courses;
+        if (data?.details?.courses) return data.details.courses;
+        return [];
+      };
       
-      const assessments = assessmentData?.data?.data?.details?.assessments || 
-                          assessmentData?.data?.details?.assessments || [];
+      // Helper function to get assessments from nested structure
+      const getAssessments = (data) => {
+        if (data?.data?.data?.details?.assessments) return data.data.data.details.assessments;
+        if (data?.data?.details?.assessments) return data.data.details.assessments;
+        if (data?.details?.assessments) return data.details.assessments;
+        return [];
+      };
+      
+      const courses = getCourses(courseBuilderData);
+      const assessments = getAssessments(assessmentData);
 
       // Filter courses by selected IDs
       const filteredCourses = courses.filter(c => courseIds.includes(c.course_id));
@@ -530,13 +543,30 @@ export class DashboardController {
             };
           })
           .sort((a, b) => b['Average Rating'] - a['Average Rating']);
-      } else if (chart.id === 'combined-dropoff-by-duration') {
+      } else if (chart.id === 'combined-dropoff-by-duration' || chart.id === 'combined-dropoff') {
         filteredChartData = filteredCourses
           .map(course => ({
             name: `${course.duration || 0}h`,
             'Drop-off Rate': Math.round((100 - (course.completionRate || 0)) * 10) / 10
           }))
           .sort((a, b) => parseFloat(a.name) - parseFloat(b.name));
+      } else if (chart.id === 'combined-top-courses') {
+        // This is already handled above, but ensure it's correct
+        filteredChartData = filteredCourses
+          .map(course => {
+            const completionRate = course.completionRate || 0;
+            const rating = (course.averageRating || 0) * 20;
+            const combinedScore = (completionRate * 0.6) + (rating * 0.4);
+            
+            return {
+              name: (course.course_name || 'Course').substring(0, 18),
+              'Completion Rate': Math.round(completionRate * 10) / 10,
+              'Average Rating': Math.round(rating * 10) / 10,
+              'Combined Score': Math.round(combinedScore * 10) / 10
+            };
+          })
+          .sort((a, b) => b['Combined Score'] - a['Combined Score'])
+          .slice(0, 10);
       } else if (chart.metadata?.service === 'courseBuilder') {
         // Main course builder chart - show key metrics for filtered courses
         const metrics = {
@@ -574,6 +604,37 @@ export class DashboardController {
           name: key,
           value: typeof value === 'number' ? Math.round(value * 100) / 100 : value
         }));
+      }
+
+      // If no filtered data was generated, return original chart with warning
+      if (filteredChartData.length === 0 && filteredCourses.length > 0) {
+        console.warn(`No filtered data generated for chart ${chartId}. Chart type may not be supported for filtering.`);
+        // Return original chart but mark as filtered
+        return res.json({
+          ...chart,
+          metadata: {
+            ...chart.metadata,
+            filtered: true,
+            selectedCourseIds: courseIds,
+            courseCount: filteredCourses.length,
+            warning: 'Filter applied but chart type does not support filtering'
+          }
+        });
+      }
+
+      // If no courses match the filter, return empty chart
+      if (filteredCourses.length === 0) {
+        return res.json({
+          ...chart,
+          data: [],
+          metadata: {
+            ...chart.metadata,
+            filtered: true,
+            selectedCourseIds: courseIds,
+            courseCount: 0,
+            warning: 'No courses match the selected filter'
+          }
+        });
       }
 
       // Return filtered chart
