@@ -13,9 +13,9 @@ const AreaChart = ({ data, width = '100%', height = 200, colorScheme }) => {
   const gradientId = `areaGradient-${primaryColor.replace('#', '')}`;
   const isDark = theme === 'dark';
   const textColor = isDark ? '#e5e7eb' : '#374151';
-  // Green tooltip background in dark mode (like Dashboard button)
-  const tooltipBg = isDark ? 'rgba(16, 185, 129, 0.95)' : 'rgba(255, 255, 255, 0.98)';
-  const tooltipText = isDark ? '#ffffff' : '#374151';
+  // White tooltip background in dark mode
+  const tooltipBg = isDark ? 'rgba(255, 255, 255, 0.98)' : 'rgba(255, 255, 255, 0.98)';
+  const tooltipText = isDark ? '#374151' : '#374151';
 
   return (
     <ResponsiveContainer width={width} height={height}>
@@ -56,7 +56,7 @@ const AreaChart = ({ data, width = '100%', height = 200, colorScheme }) => {
             border: `2px solid ${primaryColor}`,
             borderRadius: '12px',
             boxShadow: isDark 
-              ? `0 8px 16px -4px rgba(16, 185, 129, 0.4), 0 4px 8px -2px rgba(0, 0, 0, 0.3)`
+              ? `0 8px 16px -4px rgba(0, 0, 0, 0.3), 0 4px 8px -2px rgba(0, 0, 0, 0.2)`
               : `0 8px 16px -4px ${primaryColor}40`,
             fontSize: '14px',
             fontWeight: '500',
