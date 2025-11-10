@@ -13,25 +13,26 @@ import { useChartNarration } from '../../hooks/useChartNarration';
 
 // Component for chart with narration
 const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarrationReady }) => {
-  const chartRef = useRef(null);
+  const chartCardRef = useRef(null); // Ref for the entire card
+  const chartOnlyRef = useRef(null); // Ref for chart area only (without narration)
   const { loading, text, narrateFromCanvas } = useChartNarration();
   const [narrationGenerated, setNarrationGenerated] = useState(false);
 
   useEffect(() => {
     // Generate narration when chart is rendered
     const generateNarration = async () => {
-      if (!chartRef.current || narrationGenerated) return;
+      if (!chartOnlyRef.current || narrationGenerated) return;
 
       try {
         // Wait a bit for chart to fully render
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Find the SVG element inside the chart container
-        const svgElement = chartRef.current.querySelector('svg');
+        const svgElement = chartOnlyRef.current.querySelector('svg');
         if (!svgElement) return;
 
-        // Convert SVG to canvas
-        const canvas = await html2canvas(chartRef.current, {
+        // Convert only the chart area to canvas (without narration)
+        const canvas = await html2canvas(chartOnlyRef.current, {
           backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
           scale: 1,
           logging: false,
@@ -53,11 +54,11 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
     };
 
     generateNarration();
-  }, [chart, narrateFromCanvas, reportTitle, narrationGenerated]);
+  }, [chart, narrateFromCanvas, reportTitle, narrationGenerated, onNarrationReady, index]);
 
   return (
     <div 
-      ref={chartRef}
+      ref={chartCardRef}
       className="card"
       data-chart-id={chart.id || index}
     >
@@ -69,7 +70,11 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           {chart.subtitle}
         </p>
       )}
-      <div className="h-[400px]">
+      <div 
+        ref={chartOnlyRef}
+        className="h-[400px]"
+        data-chart-only="true"
+      >
         {renderChart(chart)}
       </div>
       {chart.description && (
@@ -155,16 +160,16 @@ const ReportsPage = () => {
     try {
       setDownloadingPDF(true);
       
-      // Capture all chart images
+      // Capture all chart images (only the chart, without narration)
       const chartImages = {};
       if (reportData.charts && reportData.charts.length > 0) {
         for (let i = 0; i < reportData.charts.length; i++) {
           const chart = reportData.charts[i];
           try {
-            // Find chart element in DOM
-            const chartElement = document.querySelector(`[data-chart-id="${chart.id || i}"]`);
-            if (chartElement) {
-              const canvas = await html2canvas(chartElement, {
+            // Find only the chart area (without narration) using data-chart-only attribute
+            const chartOnlyElement = document.querySelector(`[data-chart-id="${chart.id || i}"] [data-chart-only="true"]`);
+            if (chartOnlyElement) {
+              const canvas = await html2canvas(chartOnlyElement, {
                 backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
                 scale: 2,
                 logging: false,
