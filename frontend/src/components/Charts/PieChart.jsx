@@ -14,8 +14,9 @@ const PieChart = ({ data, width = '100%', height = 200, colorScheme }) => {
   const colors = generateDiverseColorPalette(data.length);
   const isDark = theme === 'dark';
   const textColor = isDark ? '#e5e7eb' : '#374151';
-  const tooltipBg = isDark ? 'rgba(31, 41, 55, 0.98)' : 'rgba(255, 255, 255, 0.98)';
-  const tooltipText = isDark ? '#e5e7eb' : '#374151';
+  // Green tooltip background in dark mode (like Dashboard button)
+  const tooltipBg = isDark ? 'rgba(16, 185, 129, 0.95)' : 'rgba(255, 255, 255, 0.98)';
+  const tooltipText = isDark ? '#ffffff' : '#374151';
   const legendText = isDark ? '#e5e7eb' : '#374151';
 
   return (
