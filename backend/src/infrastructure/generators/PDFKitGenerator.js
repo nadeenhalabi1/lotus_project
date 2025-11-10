@@ -50,8 +50,8 @@ export class PDFKitGenerator extends IPDFGenerator {
           currentY += 20;
         }
         
-        // AI Insights
-        if (reportData.aiInsights) {
+        // AI Insights - Only show as rollback if OpenAI conclusions failed
+        if (reportData.aiInsights && reportConclusions && reportConclusions.source === 'rollback') {
           currentY = this.addAIInsights(doc, reportData.aiInsights, currentY);
           currentY += 20;
         }

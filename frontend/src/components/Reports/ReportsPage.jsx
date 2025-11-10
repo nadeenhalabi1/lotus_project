@@ -439,8 +439,8 @@ const ReportsPage = () => {
               )}
             </div>
 
-            {/* AI Insights */}
-            {reportData.aiInsights && (
+            {/* AI Insights - Only show as rollback if OpenAI conclusions failed */}
+            {reportData.aiInsights && reportConclusions && reportConclusions.source === 'rollback' && (
               <div className="mb-6 space-y-4">
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
                   Chart Summary (AI-Generated)
