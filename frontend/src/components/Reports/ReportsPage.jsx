@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { reportsAPI } from '../../services/api';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import ErrorMessage from '../Common/ErrorMessage';
@@ -9,6 +9,92 @@ import MultiSeriesAreaChart from '../Charts/MultiSeriesAreaChart';
 import { Download } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import html2canvas from 'html2canvas';
+import { useChartNarration } from '../../hooks/useChartNarration';
+
+// Component for chart with narration
+const ChartWithNarration = ({ chart, index, reportTitle, renderChart }) => {
+  const chartRef = useRef(null);
+  const { loading, text, narrateFromCanvas } = useChartNarration();
+  const [narrationGenerated, setNarrationGenerated] = useState(false);
+
+  useEffect(() => {
+    // Generate narration when chart is rendered
+    const generateNarration = async () => {
+      if (!chartRef.current || narrationGenerated) return;
+
+      try {
+        // Wait a bit for chart to fully render
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Find the SVG element inside the chart container
+        const svgElement = chartRef.current.querySelector('svg');
+        if (!svgElement) return;
+
+        // Convert SVG to canvas
+        const canvas = await html2canvas(chartRef.current, {
+          backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
+          scale: 1,
+          logging: false,
+          useCORS: true
+        });
+
+        // Generate narration
+        const context = `${reportTitle} - ${chart.title}`;
+        await narrateFromCanvas(canvas, context);
+        setNarrationGenerated(true);
+      } catch (error) {
+        console.error('Failed to generate chart narration:', error);
+      }
+    };
+
+    generateNarration();
+  }, [chart, narrateFromCanvas, reportTitle, narrationGenerated]);
+
+  return (
+    <div 
+      ref={chartRef}
+      className="card"
+      data-chart-id={chart.id || index}
+    >
+      <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+        {chart.title}
+      </h4>
+      {chart.subtitle && (
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          {chart.subtitle}
+        </p>
+      )}
+      <div className="h-[400px]">
+        {renderChart(chart)}
+      </div>
+      {chart.description && (
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-4">
+          {chart.description}
+        </p>
+      )}
+      
+      {/* AI Analysis & Insights */}
+      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
+          AI Analysis & Insights
+        </h4>
+        {loading ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+            Analyzing chart...
+          </p>
+        ) : text ? (
+          <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans">
+            {text}
+          </pre>
+        ) : (
+          <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+            Narration will appear here...
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const REPORTS = [
   { id: 'monthly-performance', name: 'Monthly Learning Performance Report', description: 'Comprehensive monthly analysis of learning outcomes' },
@@ -259,28 +345,13 @@ const ReportsPage = () => {
               </h3>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {reportData.charts.map((chart, index) => (
-                  <div 
-                    key={chart.id || index} 
-                    className="card"
-                    data-chart-id={chart.id || index}
-                  >
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                      {chart.title}
-                    </h4>
-                    {chart.subtitle && (
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                        {chart.subtitle}
-                      </p>
-                    )}
-                    <div className="h-[400px]">
-                      {renderChart(chart)}
-                    </div>
-                    {chart.description && (
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-4">
-                        {chart.description}
-                      </p>
-                    )}
-                  </div>
+                  <ChartWithNarration
+                    key={chart.id || index}
+                    chart={chart}
+                    index={index}
+                    reportTitle={reportData.executiveSummary?.title || selectedReport}
+                    renderChart={renderChart}
+                  />
                 ))}
               </div>
             </div>

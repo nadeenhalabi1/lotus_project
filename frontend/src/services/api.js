@@ -113,5 +113,18 @@ export const dataAPI = {
   getStatus: () => api.get('/data/status'),
 };
 
+// OpenAI API
+export const openaiAPI = {
+  describeChart: (image, context, fast = false) => {
+    // Determine if it's a URL or data URL
+    const isUrl = image.startsWith('http://') || image.startsWith('https://');
+    const payload = isUrl 
+      ? { imageUrl: image, context, fast }
+      : { dataUrl: image, context, fast };
+    
+    return api.post('/openai/describe-chart', payload);
+  },
+};
+
 export default api;
 
