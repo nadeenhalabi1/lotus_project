@@ -12,7 +12,7 @@ import html2canvas from 'html2canvas';
 import { useChartNarration } from '../../hooks/useChartNarration';
 
 // Component for chart with narration
-const ChartWithNarration = ({ chart, index, reportTitle, renderChart }) => {
+const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarrationReady }) => {
   const chartRef = useRef(null);
   const { loading, text, narrateFromCanvas } = useChartNarration();
   const [narrationGenerated, setNarrationGenerated] = useState(false);
@@ -40,8 +40,13 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart }) => {
 
         // Generate narration
         const context = `${reportTitle} - ${chart.title}`;
-        await narrateFromCanvas(canvas, context);
+        const narrationText = await narrateFromCanvas(canvas, context);
         setNarrationGenerated(true);
+        
+        // Notify parent component about the narration
+        if (onNarrationReady && narrationText) {
+          onNarrationReady(chart.id || index, narrationText);
+        }
       } catch (error) {
         console.error('Failed to generate chart narration:', error);
       }
@@ -118,6 +123,7 @@ const ReportsPage = () => {
   const [reportData, setReportData] = useState(null);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [error, setError] = useState(null);
+  const [chartNarrations, setChartNarrations] = useState({});
 
   const handleGenerate = async (reportId) => {
     try {
@@ -134,6 +140,13 @@ const ReportsPage = () => {
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handleNarrationReady = (chartId, narrationText) => {
+    setChartNarrations(prev => ({
+      ...prev,
+      [chartId]: narrationText
+    }));
   };
 
   const handleDownloadPDF = async () => {
@@ -165,10 +178,11 @@ const ReportsPage = () => {
         }
       }
       
-      // Send request with chart images
+      // Send request with chart images and narrations
       const response = await reportsAPI.generateReport(selectedReport, { 
         format: 'pdf',
-        chartImages 
+        chartImages,
+        chartNarrations 
       });
       
       // Create blob and download
@@ -351,6 +365,7 @@ const ReportsPage = () => {
                     index={index}
                     reportTitle={reportData.executiveSummary?.title || selectedReport}
                     renderChart={renderChart}
+                    onNarrationReady={handleNarrationReady}
                   />
                 ))}
               </div>

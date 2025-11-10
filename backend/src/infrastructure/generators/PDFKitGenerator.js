@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export class PDFKitGenerator extends IPDFGenerator {
-  async generate(reportData, chartImages = {}) {
+  async generate(reportData, chartImages = {}, chartNarrations = {}) {
     return new Promise((resolve, reject) => {
       try {
         console.log('[PDFKit] Starting report PDF generation');
@@ -52,7 +52,7 @@ export class PDFKitGenerator extends IPDFGenerator {
         
         // Charts
         if (reportData.charts && reportData.charts.length > 0) {
-          currentY = this.addChartsSection(doc, reportData.charts, chartImages, currentY);
+          currentY = this.addChartsSection(doc, reportData.charts, chartImages, chartNarrations, currentY);
           currentY += 20;
         }
         
@@ -660,7 +660,7 @@ export class PDFKitGenerator extends IPDFGenerator {
     return colorMap[color] || '#111827';
   }
 
-  addChartsSection(doc, charts, chartImages, startY) {
+  addChartsSection(doc, charts, chartImages, chartNarrations, startY) {
     let currentY = startY;
     
     // Section title
@@ -711,6 +711,40 @@ export class PDFKitGenerator extends IPDFGenerator {
           });
           
           currentY += maxHeight + 15;
+          
+          // Add chart narration if available
+          const narration = chartNarrations[chart.id] || chartNarrations[i];
+          if (narration) {
+            // Check if we need a new page for narration
+            if (currentY > doc.page.height - 150) {
+              doc.addPage();
+              currentY = 50;
+            }
+            
+            // Narration title
+            doc.fontSize(12)
+               .fillColor('#10b981')
+               .font('Helvetica-Bold')
+               .text('AI Analysis & Insights', 50, currentY);
+            currentY += 20;
+            
+            // Narration text
+            doc.fontSize(10)
+               .fillColor('#374151')
+               .font('Helvetica')
+               .text(narration, 50, currentY, {
+                 width: doc.page.width - 100,
+                 align: 'left',
+                 lineGap: 3
+               });
+            
+            // Calculate narration height
+            const narrationHeight = doc.heightOfString(narration, {
+              width: doc.page.width - 100,
+              lineGap: 3
+            });
+            currentY += narrationHeight + 20;
+          }
         } catch (imageError) {
           console.warn(`[PDFKit] Failed to add chart image for ${chart.id}:`, imageError.message);
           // Add placeholder text
