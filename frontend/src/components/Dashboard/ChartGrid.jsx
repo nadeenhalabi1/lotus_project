@@ -1,9 +1,9 @@
 import ChartCard from './ChartCard';
 
 const ChartGrid = ({ charts, onChartClick, failedServices }) => {
-  // Use 2 columns on large screens for bigger, more prominent charts
+  // Use 2 columns on large screens for optimized chart display
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {charts.map((chart) => (
         <ChartCard
           key={chart.id}

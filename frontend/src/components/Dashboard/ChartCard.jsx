@@ -29,7 +29,7 @@ const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
     const chartProps = {
       data: chart.data,
       width: '100%',
-      height: 500, // Large and vibrant charts for dashboard
+      height: 500, // Keep original chart size
       colorScheme: colorScheme,
     };
 
@@ -79,38 +79,38 @@ const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
       }}
       aria-label={`View ${chart.title} chart details`}
     >
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex-1">
-          <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-0.5">
             {chart.title}
           </h3>
           {chart.subtitle && (
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
               {chart.subtitle}
             </p>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {isStale && (
-            <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 shadow-sm">
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 shadow-sm">
               Stale Data
             </span>
           )}
           <div 
-            className="p-2 rounded-lg"
+            className="p-1.5 rounded-lg"
             style={{ backgroundColor: `${colorScheme.primary}15` }}
           >
-            <BarChart3 className="h-6 w-6" style={{ color: colorScheme.primary }} />
+            <BarChart3 className="h-4 w-4" style={{ color: colorScheme.primary }} />
           </div>
         </div>
       </div>
-              <div className="h-[500px] mb-4">{renderChart()}</div>
+      <div className="h-[500px] mb-2">{renderChart()}</div>
       {chart.description && (
-        <p className="mt-4 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+        <p className="mt-2 text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
           {chart.description}
         </p>
       )}
-      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
         <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
           Last updated: <span className="text-gray-700 dark:text-gray-300">{formatDateTime(lastUpdated)}</span>
         </p>
