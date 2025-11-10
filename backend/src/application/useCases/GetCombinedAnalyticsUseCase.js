@@ -157,6 +157,29 @@ export class GetCombinedAnalyticsUseCase {
     return {};
   }
 
+  // Helper to get lastUpdated timestamp from data
+  getLastUpdated(data) {
+    // Try multiple possible paths
+    if (data?.metadata?.collected_at) return data.metadata.collected_at;
+    if (data?.data?.metadata?.collected_at) return data.data.metadata.collected_at;
+    if (data?.data?.data?.metadata?.collected_at) return data.data.data.metadata.collected_at;
+    if (data?.timestamp) return data.timestamp;
+    if (data?.data?.timestamp) return data.data.timestamp;
+    return new Date().toISOString(); // Fallback to current time
+  }
+
+  // Helper to get latest lastUpdated from multiple data sources
+  getLatestLastUpdated(...dataSources) {
+    const timestamps = dataSources
+      .map(data => this.getLastUpdated(data))
+      .filter(Boolean);
+    
+    if (timestamps.length === 0) return new Date().toISOString();
+    
+    // Return the most recent timestamp
+    return timestamps.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+  }
+
   // 1. Active vs. Total Enrollments per Course
   createEnrollmentsComparisonChart(courseBuilderData) {
     const courses = this.getDataDetails(courseBuilderData, 'courses');
@@ -185,6 +208,7 @@ export class GetCombinedAnalyticsUseCase {
       metadata: {
         chartType: 'combined',
         services: ['courseBuilder'],
+        lastUpdated: this.getLastUpdated(courseBuilderData),
         colorScheme: { primary: '#10b981', secondary: '#34d399', tertiary: '#6ee7b7' }
       }
     };
@@ -241,6 +265,7 @@ export class GetCombinedAnalyticsUseCase {
       metadata: {
         chartType: 'combined',
         services: ['directory'],
+        lastUpdated: this.getLastUpdated(directoryData),
         colorScheme: { primary: '#3b82f6', secondary: '#60a5fa' }
       }
     };
@@ -299,6 +324,7 @@ export class GetCombinedAnalyticsUseCase {
       metadata: {
         chartType: 'combined',
         services: ['directory', 'courseBuilder'],
+        lastUpdated: this.getLatestLastUpdated(directoryData, courseBuilderData),
         colorScheme: { primary: '#10b981', secondary: '#34d399' }
       }
     };
@@ -519,6 +545,7 @@ export class GetCombinedAnalyticsUseCase {
       metadata: {
         chartType: 'combined',
         services: ['courseBuilder', 'assessment'],
+        lastUpdated: this.getLatestLastUpdated(courseBuilderData, assessmentData),
         colorScheme: { primary: '#10b981', secondary: '#34d399', tertiary: '#6ee7b7' }
       }
     };

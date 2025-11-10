@@ -178,14 +178,35 @@ export class DashboardController {
         return acc;
       }, {});
 
-      // Update only the priority charts with refresh status
+      // Update all priority charts with refresh status
       const chartsWithStatus = priorityCharts.map((chart) => {
-        const service = chart.metadata?.service;
-        const lastSuccessful = failedMap[service];
+        // For combined charts, check all services
+        const services = chart.metadata?.services || 
+                        (chart.metadata?.service ? [chart.metadata.service] : []);
+        
+        // Find the most recent lastSuccessful from all services
+        let lastSuccessful = null;
+        let isStale = false;
+        
+        for (const svc of services) {
+          const svcLastSuccessful = failedMap[svc];
+          if (svcLastSuccessful) {
+            isStale = true;
+            if (!lastSuccessful || new Date(svcLastSuccessful) > new Date(lastSuccessful)) {
+              lastSuccessful = svcLastSuccessful;
+            }
+          }
+        }
+        
+        // If no failed services, use the chart's existing lastUpdated or current time
+        if (!isStale && !chart.metadata?.lastUpdated) {
+          lastSuccessful = new Date().toISOString();
+        }
+        
         const metadata = {
           ...chart.metadata,
-          lastUpdated: chart.metadata?.lastUpdated || lastSuccessful || null,
-          isStale: Boolean(lastSuccessful)
+          lastUpdated: chart.metadata?.lastUpdated || lastSuccessful || new Date().toISOString(),
+          isStale: isStale
         };
 
         return {
