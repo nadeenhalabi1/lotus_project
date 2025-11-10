@@ -568,7 +568,7 @@ export class PDFKitGenerator extends IPDFGenerator {
     doc.fontSize(18)
        .fillColor('#10b981')
        .font('Helvetica-Bold')
-       .text('AI Analysis & Insights', 50, currentY);
+       .text('Chart Summary (AI-Generated)', 50, currentY);
     currentY += 30;
     
     // Observations
@@ -725,7 +725,7 @@ export class PDFKitGenerator extends IPDFGenerator {
             doc.fontSize(12)
                .fillColor('#10b981')
                .font('Helvetica-Bold')
-               .text('AI Analysis & Insights', 50, currentY);
+               .text('Chart Summary (AI-Generated)', 50, currentY);
             currentY += 20;
             
             // Narration text

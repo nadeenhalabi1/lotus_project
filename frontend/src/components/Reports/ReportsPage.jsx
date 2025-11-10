@@ -83,10 +83,10 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
         </p>
       )}
       
-      {/* AI Analysis & Insights */}
+      {/* Chart Summary (AI-Generated) */}
       <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
         <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
-          AI Analysis & Insights
+          Chart Summary (AI-Generated)
         </h4>
         {loading ? (
           <p className="text-sm text-gray-500 dark:text-gray-400 italic">
@@ -322,7 +322,7 @@ const ReportsPage = () => {
             {reportData.aiInsights && (
               <div className="mb-6 space-y-4">
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  AI Analysis & Insights
+                  Chart Summary (AI-Generated)
                 </h3>
                 
                 {reportData.aiInsights.observations && (
