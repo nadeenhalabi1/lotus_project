@@ -9,7 +9,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export class PDFKitGenerator extends IPDFGenerator {
-  async generate(reportData, chartImages = {}, chartNarrations = {}) {
+  async generate(reportData, chartImages = {}, chartNarrations = {}, reportConclusions = null) {
     return new Promise((resolve, reject) => {
       try {
         console.log('[PDFKit] Starting report PDF generation');
@@ -41,6 +41,12 @@ export class PDFKitGenerator extends IPDFGenerator {
         // Executive Summary
         if (reportData.executiveSummary) {
           currentY = this.addExecutiveSummary(doc, reportData.executiveSummary, currentY);
+          currentY += 20;
+        }
+        
+        // AI Insights & Conclusions
+        if (reportConclusions) {
+          currentY = this.addReportConclusions(doc, reportConclusions, currentY);
           currentY += 20;
         }
         
@@ -553,6 +559,82 @@ export class PDFKitGenerator extends IPDFGenerator {
        .text(formattedValue, x + 5, y + 20, {
          width: width - 10
        });
+  }
+
+  addReportConclusions(doc, reportConclusions, startY) {
+    let currentY = startY;
+    
+    // Check if we need a new page
+    if (currentY > doc.page.height - 400) {
+      doc.addPage();
+      currentY = 50;
+    }
+    
+    // Section title
+    doc.fontSize(18)
+       .fillColor('#10b981')
+       .font('Helvetica-Bold')
+       .text('AI Insights & Conclusions', 50, currentY);
+    currentY += 25;
+    
+    // Show rollback warning if applicable
+    if (reportConclusions.source === 'rollback') {
+      doc.fontSize(9)
+         .fillColor('#d97706')
+         .font('Helvetica')
+         .text('⚠️ Using fallback content due to temporary AI connection issue.', 50, currentY);
+      currentY += 15;
+    }
+    
+    // Add each conclusion
+    if (reportConclusions.data && reportConclusions.data.conclusions) {
+      reportConclusions.data.conclusions.forEach((conclusion, index) => {
+        // Check if we need a new page
+        if (currentY > doc.page.height - 100) {
+          doc.addPage();
+          currentY = 50;
+        }
+        
+        // Conclusion number and statement
+        doc.fontSize(12)
+           .fillColor('#111827')
+           .font('Helvetica-Bold')
+           .text(`${index + 1}. ${conclusion.statement}`, 50, currentY, {
+             width: doc.page.width - 100
+           });
+        
+        // Calculate height for statement
+        const statementHeight = doc.heightOfString(`${index + 1}. ${conclusion.statement}`, {
+          width: doc.page.width - 100
+        });
+        currentY += statementHeight + 8;
+        
+        // Rationale
+        doc.fontSize(10)
+           .fillColor('#6b7280')
+           .font('Helvetica')
+           .text(conclusion.rationale || '', 50, currentY, {
+             width: doc.page.width - 100,
+             lineGap: 2
+           });
+        
+        // Calculate height for rationale
+        const rationaleHeight = doc.heightOfString(conclusion.rationale || '', {
+          width: doc.page.width - 100,
+          lineGap: 2
+        });
+        currentY += rationaleHeight + 15;
+        
+        // Add a subtle line separator
+        doc.moveTo(50, currentY - 5)
+           .lineTo(doc.page.width - 50, currentY - 5)
+           .strokeColor('#e5e7eb')
+           .lineWidth(0.5)
+           .stroke();
+      });
+    }
+    
+    return currentY;
   }
 
   addAIInsights(doc, insights, startY) {

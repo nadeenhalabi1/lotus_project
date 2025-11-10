@@ -38,12 +38,13 @@ export class GenerateReportUseCase {
         // Continue without AI insights
       }
 
-      // 5. Generate PDF (chartImages and chartNarrations will be passed from controller)
-      // Note: chartImages and chartNarrations should be passed from the controller
+      // 5. Generate PDF (chartImages, chartNarrations, and reportConclusions will be passed from controller)
+      // Note: chartImages, chartNarrations, and reportConclusions should be passed from the controller
       const pdf = await this.pdfGenerator.generate(
         report.toJSON(), 
         options.chartImages || {},
-        options.chartNarrations || {}
+        options.chartNarrations || {},
+        options.reportConclusions || null
       );
 
       return {

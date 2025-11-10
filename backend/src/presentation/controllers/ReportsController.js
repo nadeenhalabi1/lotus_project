@@ -40,7 +40,7 @@ export class ReportsController {
 
   async generateReport(req, res, next) {
     try {
-      const { reportType, format = 'json', chartImages = {}, chartNarrations = {}, ...options } = req.body;
+      const { reportType, format = 'json', chartImages = {}, chartNarrations = {}, reportConclusions = null, ...options } = req.body;
       const userId = req.user?.userId || req.user?.sub || 'mvp-user';
 
       if (!reportType) {
@@ -51,8 +51,8 @@ export class ReportsController {
       auditLogger.logReportGeneration(userId, reportType, 'initiated');
 
       const startTime = Date.now();
-      // Pass chartImages and chartNarrations to use case
-      const result = await this.generateReportUseCase.execute(reportType, { ...options, chartImages, chartNarrations });
+      // Pass chartImages, chartNarrations, and reportConclusions to use case
+      const result = await this.generateReportUseCase.execute(reportType, { ...options, chartImages, chartNarrations, reportConclusions });
       const duration = Date.now() - startTime;
 
       // Log successful report generation

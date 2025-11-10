@@ -124,6 +124,9 @@ export const openaiAPI = {
     
     return api.post('/openai/describe-chart', payload);
   },
+  generateReportConclusions: (topic, images) => {
+    return api.post('/openai/report-conclusions', { topic, images });
+  },
 };
 
 export default api;
