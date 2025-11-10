@@ -22,21 +22,4 @@
   }
 }
 
-/* White shadow for bar charts on hover in dark mode */
-.dark .recharts-bar-rectangle:hover,
-.dark .recharts-bar-rectangle:active {
-  filter: drop-shadow(0 4px 8px rgba(255, 255, 255, 0.5)) drop-shadow(0 2px 4px rgba(255, 255, 255, 0.3)) !important;
-}
-
-/* Apply to all bar rectangles in dark mode on hover */
-.dark .recharts-bar .recharts-bar-rectangle:hover,
-.dark .recharts-bar .recharts-bar-rectangle:active {
-  filter: drop-shadow(0 4px 8px rgba(255, 255, 255, 0.5)) drop-shadow(0 2px 4px rgba(255, 255, 255, 0.3)) !important;
-}
-
-/* Also target SVG rectangles directly */
-.dark svg .recharts-bar-rectangle:hover,
-.dark svg .recharts-bar-rectangle:active {
-  filter: drop-shadow(0 4px 8px rgba(255, 255, 255, 0.5)) drop-shadow(0 2px 4px rgba(255, 255, 255, 0.3)) !important;
-}
 
