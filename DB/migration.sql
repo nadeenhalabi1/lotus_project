@@ -118,18 +118,93 @@ select cron.schedule(
   command := $$call public.purge_cache_older_than_60_days();$$
 );
 
--- 7) AI Chart Transcriptions Cache
+-- 7) AI Chart Transcriptions Cache (DB-first flow)
 create table if not exists public.ai_chart_transcriptions (
   id bigserial primary key,
   chart_id varchar(128) not null,
   chart_signature varchar(64) not null,
-  model varchar(32) default 'gpt-4o',
+  model varchar(32) not null default 'gpt-4o',
   transcription_text text not null,
-  created_at timestamptz default now(),
-  expires_at timestamptz default (now() + interval '60 days')
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '60 days')
 );
-create index if not exists idx_ai_chart_id on public.ai_chart_transcriptions(chart_id);
-create index if not exists idx_ai_chart_sig on public.ai_chart_transcriptions(chart_signature);
+
+-- Migrate existing table if it exists without updated_at column
+do $$
+begin
+  -- Add updated_at column if it doesn't exist
+  if not exists (
+    select 1 from information_schema.columns 
+    where table_schema = 'public' 
+    and table_name = 'ai_chart_transcriptions' 
+    and column_name = 'updated_at'
+  ) then
+    alter table public.ai_chart_transcriptions 
+    add column updated_at timestamptz not null default now();
+  end if;
+  
+  -- Update model column to NOT NULL if it's nullable
+  if exists (
+    select 1 from information_schema.columns 
+    where table_schema = 'public' 
+    and table_name = 'ai_chart_transcriptions' 
+    and column_name = 'model'
+    and is_nullable = 'YES'
+  ) then
+    alter table public.ai_chart_transcriptions 
+    alter column model set not null,
+    alter column model set default 'gpt-4o';
+  end if;
+  
+  -- Update created_at to NOT NULL if it's nullable
+  if exists (
+    select 1 from information_schema.columns 
+    where table_schema = 'public' 
+    and table_name = 'ai_chart_transcriptions' 
+    and column_name = 'created_at'
+    and is_nullable = 'YES'
+  ) then
+    alter table public.ai_chart_transcriptions 
+    alter column created_at set not null,
+    alter column created_at set default now();
+  end if;
+  
+  -- Update expires_at to NOT NULL if it's nullable
+  if exists (
+    select 1 from information_schema.columns 
+    where table_schema = 'public' 
+    and table_name = 'ai_chart_transcriptions' 
+    and column_name = 'expires_at'
+    and is_nullable = 'YES'
+  ) then
+    alter table public.ai_chart_transcriptions 
+    alter column expires_at set not null,
+    alter column expires_at set default (now() + interval '60 days');
+  end if;
+end $$;
+
+-- Unique constraint: one row per chart (drop old index if exists, create new unique)
+drop index if exists public.idx_ai_chart_id;
+drop index if exists public.uiq_ai_chart_transcriptions_chart;
+create unique index if not exists uiq_ai_chart_transcriptions_chart
+  on public.ai_chart_transcriptions (chart_id);
+
+create index if not exists idx_ai_chart_transcriptions_signature
+  on public.ai_chart_transcriptions (chart_signature);
+
+-- Trigger to update updated_at automatically
+create or replace function set_updated_at()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end; $$ language plpgsql;
+
+drop trigger if exists trg_ai_chart_transcriptions_updated_at on public.ai_chart_transcriptions;
+create trigger trg_ai_chart_transcriptions_updated_at
+before update on public.ai_chart_transcriptions
+for each row execute function set_updated_at();
 
 -- Extend purge function to include transcriptions
 create or replace function public.purge_cache_older_than_60_days()

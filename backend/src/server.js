@@ -5,6 +5,7 @@ import dashboardRoutes from './presentation/routes/dashboard.js';
 import reportsRoutes from './presentation/routes/reports.js';
 import dataRoutes from './presentation/routes/data.js';
 import openaiRoutes from './presentation/routes/openai.js';
+import chartTranscriptionRoutes from './presentation/routes/chartTranscription.js';
 import { errorHandler } from './presentation/middleware/errorHandler.js';
 import { auditMiddleware } from './presentation/middleware/auditMiddleware.js';
 import { securityConfig } from './config/security.js';
@@ -46,6 +47,7 @@ app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/reports', reportsRoutes);
 app.use('/api/v1/data', dataRoutes);
 app.use('/api/v1/openai', openaiRoutes);
+app.use('/api/v1/ai', chartTranscriptionRoutes);
 
 // Error handling
 app.use(errorHandler);

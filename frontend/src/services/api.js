@@ -116,7 +116,7 @@ export const dataAPI = {
 // OpenAI API
 export const openaiAPI = {
   describeChart: (image, context, fast = false) => {
-    // Determine if it's a URL or data URL
+    // Legacy endpoint - uses old endpoint without caching
     const isUrl = image.startsWith('http://') || image.startsWith('https://');
     const payload = isUrl 
       ? { imageUrl: image, context, fast }
@@ -124,22 +124,38 @@ export const openaiAPI = {
     
     return api.post('/openai/describe-chart', payload);
   },
-  transcribeChart: (chartId, image, topic, chartData, force = false) => {
-    // Optimized endpoint with Supabase caching
-    // Determine if it's a URL or data URL
+  generateReportConclusions: (topic, images) => {
+    return api.post('/openai/report-conclusions', { topic, images });
+  },
+};
+
+// Chart Transcription API (DB-first flow)
+export const chartTranscriptionAPI = {
+  // GET: Read transcription from DB only (no OpenAI call)
+  getTranscription: (chartId) => {
+    return api.get(`/ai/chart-transcription/${chartId}`);
+  },
+  // POST: Ensure transcription exists (runs OpenAI only if needed)
+  ensureTranscription: (chartId, image, topic, chartData) => {
     const isUrl = image.startsWith('http://') || image.startsWith('https://');
     const payload = {
       chartId,
       topic: topic || '',
       chartData: chartData || {},
-      force,
       ...(isUrl ? { imageUrl: image } : { dataUrl: image })
     };
-    
-    return api.post('/openai/transcribe-chart', payload);
+    return api.post('/ai/chart-transcription/ensure', payload);
   },
-  generateReportConclusions: (topic, images) => {
-    return api.post('/openai/report-conclusions', { topic, images });
+  // POST: Refresh transcription (always runs OpenAI and overwrites DB)
+  refreshTranscription: (chartId, image, topic, chartData) => {
+    const isUrl = image.startsWith('http://') || image.startsWith('https://');
+    const payload = {
+      chartId,
+      topic: topic || '',
+      chartData: chartData || {},
+      ...(isUrl ? { imageUrl: image } : { dataUrl: image })
+    };
+    return api.post('/ai/chart-transcription/refresh', payload);
   },
 };
 

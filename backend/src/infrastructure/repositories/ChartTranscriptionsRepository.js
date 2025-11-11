@@ -19,12 +19,11 @@ function getSupabaseClient() {
 }
 
 /**
- * Get cached transcription for a chart
+ * Get transcription row from DB (DB-first flow)
  * @param {string} chartId - Unique chart identifier
- * @param {string} signature - Chart data hash signature
- * @returns {Promise<string|null>} Cached transcription text or null
+ * @returns {Promise<Object|null>} Transcription row or null
  */
-export async function getCachedTranscription(chartId, signature) {
+export async function getTranscriptionRow(chartId) {
   const client = getSupabaseClient();
   if (!client) {
     return null;
@@ -33,10 +32,8 @@ export async function getCachedTranscription(chartId, signature) {
   try {
     const { data, error } = await client
       .from('ai_chart_transcriptions')
-      .select('transcription_text')
+      .select('chart_id, chart_signature, transcription_text, updated_at, expires_at')
       .eq('chart_id', chartId)
-      .eq('chart_signature', signature)
-      .gt('expires_at', new Date().toISOString())
       .maybeSingle();
 
     if (error) {
@@ -44,45 +41,52 @@ export async function getCachedTranscription(chartId, signature) {
       return null;
     }
 
-    return data?.transcription_text ?? null;
+    return data;
   } catch (err) {
-    console.error('Error fetching cached transcription:', err.message);
+    console.error('Error fetching transcription row:', err.message);
     return null;
   }
 }
 
 /**
- * Save transcription to cache
- * @param {string} chartId - Unique chart identifier
- * @param {string} signature - Chart data hash signature
- * @param {string} model - OpenAI model used
- * @param {string} text - Transcription text
+ * Upsert transcription (DB-first flow - overwrites existing row)
+ * @param {Object} params - Transcription parameters
+ * @param {string} params.chartId - Unique chart identifier
+ * @param {string} params.signature - Chart data hash signature
+ * @param {string} params.model - OpenAI model used
+ * @param {string} params.text - Transcription text
  * @returns {Promise<boolean>} Success status
  */
-export async function saveTranscription(chartId, signature, model, text) {
+export async function upsertTranscription(params) {
   const client = getSupabaseClient();
   if (!client) {
     return false;
   }
 
   try {
+    // Calculate expires_at (60 days from now)
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 60).toISOString();
+
     const { error } = await client
       .from('ai_chart_transcriptions')
-      .insert({
-        chart_id: chartId,
-        chart_signature: signature,
-        model: model || 'gpt-4o',
-        transcription_text: text
+      .upsert({
+        chart_id: params.chartId,
+        chart_signature: params.signature,
+        model: params.model || 'gpt-4o',
+        transcription_text: params.text,
+        expires_at: expiresAt
+      }, { 
+        onConflict: 'chart_id' 
       });
 
     if (error) {
-      console.error('Supabase insert error:', error.message);
+      console.error('Supabase upsert error:', error.message);
       return false;
     }
 
     return true;
   } catch (err) {
-    console.error('Error saving transcription:', err.message);
+    console.error('Error upserting transcription:', err.message);
     return false;
   }
 }
