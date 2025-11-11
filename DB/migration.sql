@@ -119,18 +119,18 @@ select cron.schedule(
 );
 
 -- 7) AI Chart Transcriptions Cache (DB-first flow)
+-- One row per chart, overwritten on refresh
 create table if not exists public.ai_chart_transcriptions (
   id bigserial primary key,
-  chart_id varchar(128) not null,
+  chart_id varchar(128) not null unique,
   chart_signature varchar(64) not null,
   model varchar(32) not null default 'gpt-4o',
   transcription_text text not null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  expires_at timestamptz not null default (now() + interval '60 days')
+  updated_at timestamptz not null default now()
 );
 
--- Migrate existing table if it exists without updated_at column
+-- Migrate existing table: remove expires_at, add UNIQUE constraint
 do $$
 begin
   -- Add updated_at column if it doesn't exist
@@ -144,52 +144,28 @@ begin
     add column updated_at timestamptz not null default now();
   end if;
   
-  -- Update model column to NOT NULL if it's nullable
-  if exists (
-    select 1 from information_schema.columns 
-    where table_schema = 'public' 
-    and table_name = 'ai_chart_transcriptions' 
-    and column_name = 'model'
-    and is_nullable = 'YES'
-  ) then
-    alter table public.ai_chart_transcriptions 
-    alter column model set not null,
-    alter column model set default 'gpt-4o';
-  end if;
-  
-  -- Update created_at to NOT NULL if it's nullable
-  if exists (
-    select 1 from information_schema.columns 
-    where table_schema = 'public' 
-    and table_name = 'ai_chart_transcriptions' 
-    and column_name = 'created_at'
-    and is_nullable = 'YES'
-  ) then
-    alter table public.ai_chart_transcriptions 
-    alter column created_at set not null,
-    alter column created_at set default now();
-  end if;
-  
-  -- Update expires_at to NOT NULL if it's nullable
+  -- Remove expires_at column if it exists (no longer needed)
   if exists (
     select 1 from information_schema.columns 
     where table_schema = 'public' 
     and table_name = 'ai_chart_transcriptions' 
     and column_name = 'expires_at'
-    and is_nullable = 'YES'
   ) then
     alter table public.ai_chart_transcriptions 
-    alter column expires_at set not null,
-    alter column expires_at set default (now() + interval '60 days');
+    drop column expires_at;
+  end if;
+  
+  -- Ensure UNIQUE constraint on chart_id
+  if not exists (
+    select 1 from pg_constraint 
+    where conname = 'ai_chart_transcriptions_chart_id_key'
+  ) then
+    alter table public.ai_chart_transcriptions 
+    add constraint ai_chart_transcriptions_chart_id_key unique (chart_id);
   end if;
 end $$;
 
--- Unique constraint: one row per chart (drop old index if exists, create new unique)
-drop index if exists public.idx_ai_chart_id;
-drop index if exists public.uiq_ai_chart_transcriptions_chart;
-create unique index if not exists uiq_ai_chart_transcriptions_chart
-  on public.ai_chart_transcriptions (chart_id);
-
+-- Index on signature for lookups
 create index if not exists idx_ai_chart_transcriptions_signature
   on public.ai_chart_transcriptions (chart_signature);
 
@@ -206,7 +182,7 @@ create trigger trg_ai_chart_transcriptions_updated_at
 before update on public.ai_chart_transcriptions
 for each row execute function set_updated_at();
 
--- Extend purge function to include transcriptions
+-- Extend purge function (transcriptions no longer expire - overwritten on refresh)
 create or replace function public.purge_cache_older_than_60_days()
 returns void language plpgsql as $$
 begin
@@ -216,6 +192,6 @@ begin
   delete from public.content_studio_contents_cache where snapshot_date < current_date - 60;
   delete from public.learning_analytics_cache      where snapshot_date < current_date - 60;
   delete from public.directory_cache               where snapshot_date < current_date - 60;
-  delete from public.ai_chart_transcriptions      where expires_at < now();
+  -- Note: ai_chart_transcriptions are overwritten on refresh, no expiration needed
 end $$;
 

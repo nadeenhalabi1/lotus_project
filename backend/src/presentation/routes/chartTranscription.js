@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { getTranscriptionRow, upsertTranscription } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
-import { computeChartSignature } from '../../utils/hash.js';
-import chartNarrationService from '../../application/services/ChartNarrationService.js';
+import { getTranscriptionByChartId, upsertTranscription } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
+import { computeChartSignature } from '../../utils/chartSignature.js';
+import { transcribeChartImage } from '../../application/services/transcribeChartService.js';
 
 console.debug('[AI] chartTranscription route loaded. Signature function OK.');
 
@@ -9,28 +9,20 @@ const router = Router();
 
 /**
  * GET /api/v1/ai/chart-transcription/:chartId
- * DB-first: Returns transcription from DB only (no OpenAI call)
+ * Render flow: Returns transcription from DB only (no OpenAI call)
  */
 router.get('/chart-transcription/:chartId', async (req, res) => {
   try {
-    const { chartId } = req.params;
-    
-    if (!chartId) {
-      return res.status(400).json({ 
-        ok: false, 
-        error: 'chartId is required' 
-      });
-    }
-
-    const row = await getTranscriptionRow(chartId);
+    const chartId = req.params.chartId;
+    const row = await getTranscriptionByChartId(chartId);
     
     if (!row) {
       return res.status(404).json({ 
         ok: false, 
-        error: 'No transcription found' 
+        error: 'No transcription' 
       });
     }
-
+    
     res.json({ 
       ok: true, 
       data: { 
@@ -49,74 +41,54 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
 });
 
 /**
- * POST /api/v1/ai/chart-transcription/ensure
- * Startup flow: Only runs OpenAI if missing or signature changed/expired
- * body: { chartId: string, topic?: string, chartData: any, imageUrl?: string, dataUrl?: string }
+ * POST /api/v1/ai/chart-transcription/startup-fill
+ * Startup ingest: For each chart, if no row exists OR signature changed → call OpenAI and upsert
+ * body: { charts: [{ chartId, topic?, chartData, imageUrl }] }
  */
-router.post('/chart-transcription/ensure', async (req, res) => {
+router.post('/chart-transcription/startup-fill', async (req, res) => {
   try {
-    const { chartId, topic, chartData, imageUrl, dataUrl } = req.body || {};
-    const image = imageUrl || dataUrl;
+    const { charts } = req.body || {};
     
-    if (!chartId || !image) {
+    if (!Array.isArray(charts)) {
       return res.status(400).json({ 
         ok: false, 
-        error: 'chartId and imageUrl/dataUrl are required' 
+        error: 'charts[] required' 
       });
     }
 
-    // Validate image format
-    if (imageUrl && !imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
-      return res.status(400).json({ 
-        ok: false, 
-        error: 'imageUrl must be a valid HTTP/HTTPS URL' 
-      });
+    const results = [];
+    
+    for (const c of charts) {
+      const { chartId, topic, chartData, imageUrl } = c || {};
+      
+      if (!chartId || !imageUrl) {
+        results.push({ chartId, status: 'skip-invalid' });
+        continue;
+      }
+
+      try {
+        const signature = computeChartSignature(topic, chartData);
+        const existing = await getTranscriptionByChartId(chartId);
+
+        // If exists and signature matches, skip OpenAI call
+        if (existing && existing.chart_signature === signature) {
+          results.push({ chartId, status: 'from-db', signature });
+          continue;
+        }
+
+        // Generate new transcription via OpenAI
+        const text = await transcribeChartImage({ imageUrl, context: topic });
+        await upsertTranscription({ chartId, signature, text, model: 'gpt-4o' });
+        results.push({ chartId, status: 'updated', signature });
+      } catch (err) {
+        console.error(`[startup-fill] Error for chart ${chartId}:`, err.message);
+        results.push({ chartId, status: 'error', error: err.message });
+      }
     }
 
-    if (dataUrl && !dataUrl.startsWith('data:image/')) {
-      return res.status(400).json({ 
-        ok: false, 
-        error: 'dataUrl must be a valid data URL (data:image/...)' 
-      });
-    }
-
-    const signature = computeChartSignature(topic, chartData);
-    const row = await getTranscriptionRow(chartId);
-
-    // Check if we need to run OpenAI
-    const isExpired = row && row.expires_at && new Date(row.expires_at) < new Date();
-    const needRun = !row || row.chart_signature !== signature || isExpired;
-
-    if (!needRun) {
-      // Return existing from DB
-      return res.json({ 
-        ok: true, 
-        source: 'db', 
-        chartId, 
-        signature: row.chart_signature, 
-        text: row.transcription_text 
-      });
-    }
-
-    // Generate new transcription via OpenAI
-    const model = 'gpt-4o';
-    const text = await chartNarrationService.describeChartImage(image, {
-      context: topic,
-      model
-    });
-
-    // Save to DB (upsert - overwrites existing)
-    await upsertTranscription({ chartId, signature, model, text });
-
-    res.json({ 
-      ok: true, 
-      source: 'ai', 
-      chartId, 
-      signature, 
-      text 
-    });
+    res.json({ ok: true, results });
   } catch (err) {
-    console.error('Ensure transcription error:', err);
+    console.error('Startup fill error:', err);
     res.status(500).json({ 
       ok: false, 
       error: err?.message || 'AI/DB error' 
@@ -127,46 +99,22 @@ router.post('/chart-transcription/ensure', async (req, res) => {
 /**
  * POST /api/v1/ai/chart-transcription/refresh
  * Refresh/Morning flow: Always runs OpenAI and overwrites DB
- * body: { chartId: string, topic?: string, chartData: any, imageUrl?: string, dataUrl?: string }
+ * body: { chartId: string, topic?: string, chartData: any, imageUrl: string }
  */
 router.post('/chart-transcription/refresh', async (req, res) => {
   try {
-    const { chartId, topic, chartData, imageUrl, dataUrl } = req.body || {};
-    const image = imageUrl || dataUrl;
+    const { chartId, topic, chartData, imageUrl } = req.body || {};
     
-    if (!chartId || !image) {
+    if (!chartId || !imageUrl) {
       return res.status(400).json({ 
         ok: false, 
-        error: 'chartId and imageUrl/dataUrl are required' 
-      });
-    }
-
-    // Validate image format
-    if (imageUrl && !imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
-      return res.status(400).json({ 
-        ok: false, 
-        error: 'imageUrl must be a valid HTTP/HTTPS URL' 
-      });
-    }
-
-    if (dataUrl && !dataUrl.startsWith('data:image/')) {
-      return res.status(400).json({ 
-        ok: false, 
-        error: 'dataUrl must be a valid data URL (data:image/...)' 
+        error: 'chartId and imageUrl are required' 
       });
     }
 
     const signature = computeChartSignature(topic, chartData);
-
-    // Always generate new transcription via OpenAI
-    const model = 'gpt-4o';
-    const text = await chartNarrationService.describeChartImage(image, {
-      context: topic,
-      model
-    });
-
-    // Save to DB (upsert - overwrites existing)
-    await upsertTranscription({ chartId, signature, model, text });
+    const text = await transcribeChartImage({ imageUrl, context: topic });
+    await upsertTranscription({ chartId, signature, text, model: 'gpt-4o' });
 
     res.json({ 
       ok: true, 

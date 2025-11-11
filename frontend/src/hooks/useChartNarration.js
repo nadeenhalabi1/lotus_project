@@ -6,7 +6,7 @@ export function useChartNarration() {
   const [text, setText] = useState('');
 
   /**
-   * DB-first: Get transcription from DB only (no OpenAI call)
+   * Render flow: Get transcription from DB only (no OpenAI call)
    * Use this for displaying transcriptions on screen
    */
   const getTranscription = useCallback(async (chartId) => {
@@ -36,32 +36,22 @@ export function useChartNarration() {
   }, []);
 
   /**
-   * DB-first: Ensure transcription exists (startup flow)
-   * Only runs OpenAI if missing or signature changed/expired
+   * Startup fill: Batch process all charts (runs OpenAI only if needed)
+   * @param {Array} charts - Array of { chartId, topic?, chartData, imageUrl }
    */
-  const ensureTranscription = useCallback(async (chartId, image, topic, chartData) => {
-    if (!chartId || !image) {
-      console.warn('chartId and image are required');
+  const startupFill = useCallback(async (charts) => {
+    if (!Array.isArray(charts) || charts.length === 0) {
+      console.warn('charts array is required');
       return null;
     }
 
     setLoading(true);
     try {
-      const res = await chartTranscriptionAPI.ensureTranscription(chartId, image, topic, chartData);
-      const transcriptionText = res.data.text;
-      setText(transcriptionText);
-      
-      // Log source for debugging
-      if (res.data.source === 'db') {
-        console.log(`✅ Chart ${chartId} transcription from DB (unchanged)`);
-      } else {
-        console.log(`🔄 Chart ${chartId} transcription from OpenAI (saved to DB)`);
-      }
-      
-      return transcriptionText;
+      const res = await chartTranscriptionAPI.startupFill(charts);
+      console.log(`✅ Startup fill completed: ${res.data.results.length} charts processed`);
+      return res.data.results;
     } catch (error) {
-      console.error('Ensure transcription error:', error);
-      setText('');
+      console.error('Startup fill error:', error);
       return null;
     } finally {
       setLoading(false);
@@ -69,18 +59,21 @@ export function useChartNarration() {
   }, []);
 
   /**
-   * DB-first: Refresh transcription (refresh/morning flow)
-   * Always runs OpenAI and overwrites DB
+   * Refresh flow: Always runs OpenAI and overwrites DB
+   * @param {string} chartId - Chart identifier
+   * @param {string} imageUrl - Chart image URL or data URL
+   * @param {string} topic - Optional context
+   * @param {any} chartData - Chart data/configuration
    */
-  const refreshTranscription = useCallback(async (chartId, image, topic, chartData) => {
-    if (!chartId || !image) {
-      console.warn('chartId and image are required');
+  const refreshTranscription = useCallback(async (chartId, imageUrl, topic, chartData) => {
+    if (!chartId || !imageUrl) {
+      console.warn('chartId and imageUrl are required');
       return null;
     }
 
     setLoading(true);
     try {
-      const res = await chartTranscriptionAPI.refreshTranscription(chartId, image, topic, chartData);
+      const res = await chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, chartData);
       const transcriptionText = res.data.text;
       setText(transcriptionText);
       
@@ -95,18 +88,6 @@ export function useChartNarration() {
       setLoading(false);
     }
   }, []);
-
-  /**
-   * Helper: Ensure from canvas
-   */
-  const ensureFromCanvas = useCallback(async (chartId, canvas, topic, chartData) => {
-    if (!canvas) {
-      console.warn('Canvas is required');
-      return null;
-    }
-    const dataUrl = canvas.toDataURL('image/png');
-    return ensureTranscription(chartId, dataUrl, topic, chartData);
-  }, [ensureTranscription]);
 
   /**
    * Helper: Refresh from canvas
@@ -128,10 +109,9 @@ export function useChartNarration() {
     loading, 
     text, 
     // DB-first methods
-    getTranscription,           // Read from DB only
-    ensureTranscription,         // Startup: only if needed
+    getTranscription,           // Render: Read from DB only
+    startupFill,                // Startup: Batch fill all charts
     refreshTranscription,       // Refresh/Morning: always overwrite
-    ensureFromCanvas,           // Helper for canvas
     refreshFromCanvas,          // Helper for canvas
     clearNarration 
   };

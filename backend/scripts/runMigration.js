@@ -130,18 +130,18 @@ select cron.schedule(
 );
 
 -- 7) AI Chart Transcriptions Cache (DB-first flow)
+-- One row per chart, overwritten on refresh
 create table if not exists public.ai_chart_transcriptions (
   id bigserial primary key,
-  chart_id varchar(128) not null,
+  chart_id varchar(128) not null unique,
   chart_signature varchar(64) not null,
   model varchar(32) not null default 'gpt-4o',
   transcription_text text not null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  expires_at timestamptz not null default (now() + interval '60 days')
+  updated_at timestamptz not null default now()
 );
 
--- Migrate existing table
+-- Migrate existing table: remove expires_at, add UNIQUE constraint
 do $$
 begin
   if not exists (
@@ -150,11 +150,19 @@ begin
   ) then
     alter table public.ai_chart_transcriptions add column updated_at timestamptz not null default now();
   end if;
+  if exists (
+    select 1 from information_schema.columns 
+    where table_schema = 'public' and table_name = 'ai_chart_transcriptions' and column_name = 'expires_at'
+  ) then
+    alter table public.ai_chart_transcriptions drop column expires_at;
+  end if;
+  if not exists (
+    select 1 from pg_constraint where conname = 'ai_chart_transcriptions_chart_id_key'
+  ) then
+    alter table public.ai_chart_transcriptions add constraint ai_chart_transcriptions_chart_id_key unique (chart_id);
+  end if;
 end $$;
 
-drop index if exists public.idx_ai_chart_id;
-drop index if exists public.uiq_ai_chart_transcriptions_chart;
-create unique index if not exists uiq_ai_chart_transcriptions_chart on public.ai_chart_transcriptions (chart_id);
 create index if not exists idx_ai_chart_transcriptions_signature on public.ai_chart_transcriptions (chart_signature);
 
 create or replace function set_updated_at() returns trigger as $$

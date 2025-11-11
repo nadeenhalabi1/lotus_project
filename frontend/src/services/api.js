@@ -131,29 +131,21 @@ export const openaiAPI = {
 
 // Chart Transcription API (DB-first flow)
 export const chartTranscriptionAPI = {
-  // GET: Read transcription from DB only (no OpenAI call)
+  // GET: Read transcription from DB only (no OpenAI call) - Render flow
   getTranscription: (chartId) => {
     return api.get(`/ai/chart-transcription/${chartId}`);
   },
-  // POST: Ensure transcription exists (runs OpenAI only if needed)
-  ensureTranscription: (chartId, image, topic, chartData) => {
-    const isUrl = image.startsWith('http://') || image.startsWith('https://');
-    const payload = {
-      chartId,
-      topic: topic || '',
-      chartData: chartData || {},
-      ...(isUrl ? { imageUrl: image } : { dataUrl: image })
-    };
-    return api.post('/ai/chart-transcription/ensure', payload);
+  // POST: Startup fill - batch process all charts (runs OpenAI only if needed)
+  startupFill: (charts) => {
+    return api.post('/ai/chart-transcription/startup-fill', { charts });
   },
-  // POST: Refresh transcription (always runs OpenAI and overwrites DB)
-  refreshTranscription: (chartId, image, topic, chartData) => {
-    const isUrl = image.startsWith('http://') || image.startsWith('https://');
+  // POST: Refresh transcription (always runs OpenAI and overwrites DB) - Refresh/Morning flow
+  refreshTranscription: (chartId, imageUrl, topic, chartData) => {
     const payload = {
       chartId,
       topic: topic || '',
       chartData: chartData || {},
-      ...(isUrl ? { imageUrl: image } : { dataUrl: image })
+      imageUrl
     };
     return api.post('/ai/chart-transcription/refresh', payload);
   },
