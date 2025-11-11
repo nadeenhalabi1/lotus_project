@@ -1,23 +1,40 @@
 import { createHash } from 'crypto';
 
 /**
- * Build a stable hash signature for chart data (DB-first flow)
- * @param {string} topic - Chart topic/context
- * @param {any} chartData - Chart data or configuration object
+ * Canonical JSON stringify (sorted keys) for stable hashing
+ */
+function canonical(obj) {
+  if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+    const sorted = Object.keys(obj).sort()
+      .reduce((acc, k) => {
+        acc[k] = obj[k];
+        return acc;
+      }, {});
+    return JSON.stringify(sorted);
+  }
+  return JSON.stringify(obj);
+}
+
+/**
+ * Preferred API used across the app:
+ * computeChartSignature(topic, chartData)
+ * 
+ * @param {string|undefined} topic - Chart topic/context
+ * @param {any} chartData - Chart data or configuration object (stable JSON - NOT the image)
  * @returns {string} SHA256 hash hex string
  */
-export function buildChartSignature(topic, chartData) {
-  // Normalize the data by sorting keys for consistent hashing
-  const normalized = JSON.stringify(
-    { 
-      topic: topic || '', 
-      chartData: chartData || {} 
-    },
-    Object.keys(chartData || {}).sort()
-  );
-  
+export function computeChartSignature(topic, chartData) {
+  const base = { 
+    topic: topic || '', 
+    chartData: chartData || {} 
+  };
   return createHash('sha256')
-    .update(normalized)
+    .update(canonical(base))
     .digest('hex');
 }
+
+/**
+ * Back-compat alias (if some code calls buildChartSignature)
+ */
+export const buildChartSignature = computeChartSignature;
 

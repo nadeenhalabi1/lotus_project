@@ -4,6 +4,8 @@ import reportConclusionsService from '../../application/services/ReportConclusio
 import { getCachedTranscription, saveTranscription } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
 import { computeChartSignature } from '../../utils/hash.js';
 
+console.debug('[AI] openai route loaded. Signature function OK.');
+
 const router = Router();
 
 /**

@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { getTranscriptionRow, upsertTranscription } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
-import { buildChartSignature } from '../../utils/hash.js';
+import { computeChartSignature } from '../../utils/hash.js';
 import chartNarrationService from '../../application/services/ChartNarrationService.js';
+
+console.debug('[AI] chartTranscription route loaded. Signature function OK.');
 
 const router = Router();
 
@@ -78,7 +80,7 @@ router.post('/chart-transcription/ensure', async (req, res) => {
       });
     }
 
-    const signature = buildChartSignature(topic, chartData);
+    const signature = computeChartSignature(topic, chartData);
     const row = await getTranscriptionRow(chartId);
 
     // Check if we need to run OpenAI
@@ -154,7 +156,7 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       });
     }
 
-    const signature = buildChartSignature(topic, chartData);
+    const signature = computeChartSignature(topic, chartData);
 
     // Always generate new transcription via OpenAI
     const model = 'gpt-4o';
