@@ -17,6 +17,8 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
   const [transcriptionText, setTranscriptionText] = useState(''); // Local state - always synced with DB
   const [loading, setLoading] = useState(false);
   const loadedChartIdRef = useRef(null); // Track which chart we loaded
+  const loadingRef = useRef(false); // Prevent multiple simultaneous loads
+  const retryCountRef = useRef(0); // Track retry attempts
 
   useEffect(() => {
     const chartId = chart.id || `chart-${index}`;
@@ -26,10 +28,21 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
     }
     
     // Always load transcription directly from DB (no cache, no hook state)
-    const loadTranscriptionFromDB = async () => {
+    const loadTranscriptionFromDB = async (isRetry = false) => {
+      // Prevent multiple simultaneous loads
+      if (loadingRef.current && !isRetry) {
+        console.log(`[Reports Chart ${chartId}] ⚠️ Already loading, skipping duplicate request`);
+        return;
+      }
+
       try {
+        loadingRef.current = true;
         setLoading(true);
-        console.log(`[Reports Chart ${chartId}] 🔄 Fetching transcription directly from DB (GET /ai/chart-transcription/${chartId})...`);
+        
+        if (!isRetry) {
+          retryCountRef.current = 0;
+          console.log(`[Reports Chart ${chartId}] 🔄 Fetching transcription directly from DB (GET /ai/chart-transcription/${chartId})...`);
+        }
         
         // Call API directly - always fetch from DB, no cache
         const res = await chartTranscriptionAPI.getTranscription(chartId);
@@ -38,6 +51,7 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
         // Always set what's in DB (even if null) - this ensures sync with DB
         setTranscriptionText(dbTranscriptionText || '');
         loadedChartIdRef.current = chartId;
+        retryCountRef.current = 0; // Reset retry count on success
         
         if (dbTranscriptionText) {
           console.log(`[Reports Chart ${chartId}] ✅ Transcription from DB (transcription_text field):`, dbTranscriptionText.substring(0, 50) + '...');
@@ -53,12 +67,35 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           // No transcription in DB - this is OK
           console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text in DB (404)`);
           setTranscriptionText(''); // Clear - sync with DB (no data)
+          retryCountRef.current = 0; // Reset retry count for 404
+        } else if (error.response?.status === 429) {
+          // Rate limit exceeded - retry with exponential backoff
+          const maxRetries = 3;
+          if (retryCountRef.current < maxRetries) {
+            retryCountRef.current += 1;
+            const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 10000); // Exponential backoff, max 10s
+            console.log(`[Reports Chart ${chartId}] ⚠️ Rate limit (429), retrying in ${delay}ms (attempt ${retryCountRef.current}/${maxRetries})...`);
+            
+            loadingRef.current = false;
+            setLoading(false);
+            
+            setTimeout(() => {
+              loadTranscriptionFromDB(true);
+            }, delay);
+            return;
+          } else {
+            console.error(`[Reports Chart ${chartId}] ❌ Rate limit exceeded after ${maxRetries} retries`);
+            setTranscriptionText(''); // Clear on error
+            retryCountRef.current = 0;
+          }
         } else {
           console.error(`[Reports Chart ${chartId}] ❌ Error fetching transcription_text from DB:`, error);
           setTranscriptionText(''); // Clear on error
+          retryCountRef.current = 0;
         }
         loadedChartIdRef.current = chartId;
       } finally {
+        loadingRef.current = false;
         setLoading(false);
       }
     };
@@ -67,20 +104,36 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
     if (loadedChartIdRef.current !== chartId) {
       setTranscriptionText(''); // Clear previous
       loadedChartIdRef.current = null;
+      retryCountRef.current = 0; // Reset retry count
+      loadingRef.current = false; // Reset loading flag
+    }
+    
+    // Only load if we haven't loaded this chart yet
+    if (loadedChartIdRef.current === chartId && transcriptionText) {
+      // Already loaded this chart, skip
+      return () => {};
     }
     
     // Wait a bit for chart to render, then load from DB
     const timer = setTimeout(() => {
-      loadTranscriptionFromDB();
+      // Double-check we still need to load (chart might have changed)
+      if (loadedChartIdRef.current !== chartId || !transcriptionText) {
+        loadTranscriptionFromDB();
+      }
     }, 2000);
 
     // Listen for refresh event from dashboard
     const handleRefreshEvent = () => {
-      console.log(`[Reports Chart ${chartId}] 🔄 Refresh event received, reloading transcription from DB...`);
-      // Wait a bit for DB to be updated, then reload
-      setTimeout(() => {
-        loadTranscriptionFromDB();
-      }, 1000);
+      // Only reload if this is the correct chart
+      if (loadedChartIdRef.current === chartId) {
+        console.log(`[Reports Chart ${chartId}] 🔄 Refresh event received, reloading transcription from DB...`);
+        // Reset retry count for refresh
+        retryCountRef.current = 0;
+        // Wait a bit for DB to be updated, then reload
+        setTimeout(() => {
+          loadTranscriptionFromDB();
+        }, 2000); // Increased delay to allow DB to update
+      }
     };
 
     window.addEventListener('reportTranscriptionsRefreshed', handleRefreshEvent);
