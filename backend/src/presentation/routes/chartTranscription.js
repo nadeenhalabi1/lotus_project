@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { getTranscriptionByChartId, upsertTranscription } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
+import { getTranscriptionByChartId, upsertTranscription, supabase } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
 import { computeChartSignature } from '../../utils/chartSignature.js';
 import { transcribeChartImage } from '../../application/services/transcribeChartService.js';
 
 console.debug('[AI] chartTranscription route loaded. Signature function OK.');
+console.debug('[BOOT] Supabase available:', !!supabase);
 
 const router = Router();
 
@@ -17,7 +18,6 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
     console.log(`[GET /chart-transcription/${chartId}] Request received`);
     
     // Check if Supabase is available
-    const { supabase } = await import('../../infrastructure/repositories/ChartTranscriptionsRepository.js');
     if (!supabase) {
       console.error(`[GET /chart-transcription/${chartId}] Supabase client not available`);
       return res.status(503).json({ 
@@ -26,6 +26,7 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
       });
     }
     
+    console.log(`[GET /chart-transcription/${chartId}] Querying database...`);
     const row = await getTranscriptionByChartId(chartId);
     
     if (!row) {
@@ -36,7 +37,7 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
       });
     }
     
-    console.log(`[GET /chart-transcription/${chartId}] Transcription found, returning text`);
+    console.log(`[GET /chart-transcription/${chartId}] Transcription found, text length: ${row.transcription_text?.length || 0}`);
     res.json({ 
       ok: true, 
       data: { 
@@ -46,14 +47,19 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
       } 
     });
   } catch (err) {
+    // Log full error details for debugging
     console.error(`[GET /chart-transcription/${chartId}] Error:`, {
       message: err.message,
       stack: err.stack,
-      name: err.name
+      name: err.name,
+      code: err.code
     });
+    
+    // Return 500 with error message
     res.status(500).json({ 
       ok: false, 
       error: err?.message || 'DB error',
+      chartId: chartId,
       details: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
   }
@@ -75,6 +81,7 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
       });
     }
 
+    console.log(`[startup-fill] Processing ${charts.length} charts...`);
     const results = [];
     
     for (const c of charts) {
@@ -87,27 +94,42 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
 
       try {
         const signature = computeChartSignature(topic, chartData);
-        const existing = await getTranscriptionByChartId(chartId);
+        
+        // Try to get existing transcription (may fail if table doesn't exist - that's OK)
+        let existing = null;
+        try {
+          existing = await getTranscriptionByChartId(chartId);
+        } catch (err) {
+          console.warn(`[startup-fill] Could not check existing for ${chartId}:`, err.message);
+          // Continue anyway - will create new transcription
+        }
 
         // If exists and signature matches, skip OpenAI call
         if (existing && existing.chart_signature === signature) {
+          console.log(`[startup-fill] Chart ${chartId} already exists with matching signature`);
           results.push({ chartId, status: 'from-db', signature });
           continue;
         }
 
         // Generate new transcription via OpenAI
+        console.log(`[startup-fill] Generating transcription for ${chartId}...`);
         const text = await transcribeChartImage({ imageUrl, context: topic });
         await upsertTranscription({ chartId, signature, text, model: 'gpt-4o' });
+        console.log(`[startup-fill] Chart ${chartId} transcription saved successfully`);
         results.push({ chartId, status: 'updated', signature });
       } catch (err) {
-        console.error(`[startup-fill] Error for chart ${chartId}:`, err.message);
+        console.error(`[startup-fill] Error for chart ${chartId}:`, {
+          message: err.message,
+          stack: err.stack
+        });
         results.push({ chartId, status: 'error', error: err.message });
       }
     }
 
+    console.log(`[startup-fill] Completed: ${results.length} charts processed`);
     res.json({ ok: true, results });
   } catch (err) {
-    console.error('Startup fill error:', err);
+    console.error('[startup-fill] Fatal error:', err);
     res.status(500).json({ 
       ok: false, 
       error: err?.message || 'AI/DB error' 

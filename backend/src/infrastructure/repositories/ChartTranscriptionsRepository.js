@@ -72,20 +72,32 @@ export async function saveTranscription(chartId, signature, model, text) {
  */
 export async function getTranscriptionByChartId(chartId) {
   if (!supabase) {
+    console.error('[getTranscriptionByChartId] Supabase client not available');
     throw new Error('Supabase client not available - check SUPABASE_URL and SUPABASE_KEY');
   }
   
-  const { data, error } = await supabase
-    .from('ai_chart_transcriptions')
-    .select('chart_id, chart_signature, transcription_text, updated_at')
-    .eq('chart_id', chartId)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('ai_chart_transcriptions')
+      .select('chart_id, chart_signature, transcription_text, updated_at')
+      .eq('chart_id', chartId)
+      .maybeSingle();
+      
+    if (error) {
+      console.error(`[getTranscriptionByChartId] Supabase error for ${chartId}:`, {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
+      throw new Error(`Database error: ${error.message}`);
+    }
     
-  if (error) {
-    throw new Error(error.message);
+    return data || null;
+  } catch (err) {
+    console.error(`[getTranscriptionByChartId] Exception for ${chartId}:`, err.message);
+    throw err;
   }
-  
-  return data || null;
 }
 
 /**
