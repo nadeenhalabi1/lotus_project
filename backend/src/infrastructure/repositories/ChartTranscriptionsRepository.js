@@ -1,6 +1,6 @@
 // ESM module (no CommonJS)
 import pkg from 'pg';
-const { Client } = pkg;
+const { Pool } = pkg;
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -8,15 +8,31 @@ if (!DATABASE_URL) {
   console.warn('[ChartTranscriptionsRepository] Missing DATABASE_URL env');
 }
 
-// Helper to get database client
-function getDbClient() {
+// Connection pool for better performance
+let pool = null;
+
+function getPool() {
   if (!DATABASE_URL) {
     throw new Error('DATABASE_URL not available');
   }
-  return new Client({
-    connectionString: DATABASE_URL,
-    ssl: { rejectUnauthorized: false } // Required for Supabase/PostgreSQL
-  });
+  
+  if (!pool) {
+    pool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: { rejectUnauthorized: false }, // Required for Supabase/PostgreSQL
+      max: 10, // Maximum number of clients in the pool
+      idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+      connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
+    });
+    
+    pool.on('error', (err) => {
+      console.error('[ChartTranscriptionsRepository] Unexpected pool error:', err);
+    });
+    
+    console.log('[ChartTranscriptionsRepository] Database pool created');
+  }
+  
+  return pool;
 }
 
 // Export for compatibility (not used, but routes check it)
@@ -34,10 +50,8 @@ export async function getCachedTranscription(chartId, signature) {
     return null;
   }
   
-  const client = getDbClient();
   try {
-    await client.connect();
-    const result = await client.query(
+    const result = await getPool().query(
       `SELECT transcription_text, chart_signature 
        FROM ai_chart_transcriptions 
        WHERE chart_id = $1 AND chart_signature = $2 
@@ -51,10 +65,12 @@ export async function getCachedTranscription(chartId, signature) {
     
     return result.rows[0].transcription_text || null;
   } catch (err) {
-    console.error('[getCachedTranscription] Database error:', err.message);
+    console.error('[getCachedTranscription] Database error:', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail
+    });
     return null;
-  } finally {
-    await client.end();
   }
 }
 
@@ -68,10 +84,8 @@ export async function saveTranscription(chartId, signature, model, text) {
     throw new Error('DATABASE_URL not available');
   }
   
-  const client = getDbClient();
   try {
-    await client.connect();
-    await client.query(
+    await getPool().query(
       `INSERT INTO ai_chart_transcriptions 
        (chart_id, chart_signature, model, transcription_text, updated_at)
        VALUES ($1, $2, $3, $4, NOW())
@@ -83,11 +97,15 @@ export async function saveTranscription(chartId, signature, model, text) {
          updated_at = NOW()`,
       [chartId, signature, model || 'gpt-4o', text]
     );
+    console.log(`[saveTranscription] Saved transcription for ${chartId}`);
   } catch (err) {
-    console.error('[saveTranscription] Database error:', err.message);
-    throw new Error(err.message);
-  } finally {
-    await client.end();
+    console.error('[saveTranscription] Database error:', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint
+    });
+    throw new Error(`Database error: ${err.message}`);
   }
 }
 
@@ -101,10 +119,8 @@ export async function getTranscriptionByChartId(chartId) {
     throw new Error('DATABASE_URL not available');
   }
   
-  const client = getDbClient();
   try {
-    await client.connect();
-    const result = await client.query(
+    const result = await getPool().query(
       `SELECT chart_id, chart_signature, transcription_text, updated_at 
        FROM ai_chart_transcriptions 
        WHERE chart_id = $1 
@@ -113,10 +129,12 @@ export async function getTranscriptionByChartId(chartId) {
     );
     
     if (result.rows.length === 0) {
+      console.log(`[getTranscriptionByChartId] No row found for ${chartId}`);
       return null;
     }
     
     const row = result.rows[0];
+    console.log(`[getTranscriptionByChartId] Found transcription for ${chartId}, text length: ${row.transcription_text?.length || 0}`);
     return {
       chart_id: row.chart_id,
       chart_signature: row.chart_signature,
@@ -124,10 +142,20 @@ export async function getTranscriptionByChartId(chartId) {
       updated_at: row.updated_at
     };
   } catch (err) {
-    console.error(`[getTranscriptionByChartId] Database error for ${chartId}:`, err.message);
+    console.error(`[getTranscriptionByChartId] Database error for ${chartId}:`, {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint
+    });
+    
+    // Check if table doesn't exist
+    if (err.code === '42P01') {
+      console.error(`[getTranscriptionByChartId] Table 'ai_chart_transcriptions' does not exist! Run migration first.`);
+      throw new Error('Database table does not exist. Please run migration.');
+    }
+    
     throw new Error(`Database error: ${err.message}`);
-  } finally {
-    await client.end();
   }
 }
 
@@ -139,10 +167,8 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
     throw new Error('DATABASE_URL not available');
   }
   
-  const client = getDbClient();
   try {
-    await client.connect();
-    await client.query(
+    await getPool().query(
       `INSERT INTO ai_chart_transcriptions 
        (chart_id, chart_signature, model, transcription_text, updated_at)
        VALUES ($1, $2, $3, $4, NOW())
@@ -154,11 +180,22 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
          updated_at = NOW()`,
       [chartId, signature, model, text]
     );
+    console.log(`[upsertTranscription] Upserted transcription for ${chartId}`);
   } catch (err) {
-    console.error('[upsertTranscription] Database error:', err.message);
-    throw new Error(err.message);
-  } finally {
-    await client.end();
+    console.error('[upsertTranscription] Database error:', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint
+    });
+    
+    // Check if table doesn't exist
+    if (err.code === '42P01') {
+      console.error(`[upsertTranscription] Table 'ai_chart_transcriptions' does not exist! Run migration first.`);
+      throw new Error('Database table does not exist. Please run migration.');
+    }
+    
+    throw new Error(`Database error: ${err.message}`);
   }
 }
 
@@ -170,18 +207,18 @@ export async function deleteTranscriptionByChartId(chartId) {
     throw new Error('DATABASE_URL not available');
   }
   
-  const client = getDbClient();
   try {
-    await client.connect();
-    await client.query(
+    await getPool().query(
       `DELETE FROM ai_chart_transcriptions WHERE chart_id = $1`,
       [chartId]
     );
   } catch (err) {
-    console.error('[deleteTranscriptionByChartId] Database error:', err.message);
-    throw new Error(err.message);
-  } finally {
-    await client.end();
+    console.error('[deleteTranscriptionByChartId] Database error:', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail
+    });
+    throw new Error(`Database error: ${err.message}`);
   }
 }
 
