@@ -17,7 +17,6 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
   const chartCardRef = useRef(null); // Ref for the entire card
   const chartOnlyRef = useRef(null); // Ref for chart area only (without narration)
   const { loading, text, getTranscription } = useChartNarration();
-  const [narrationLoaded, setNarrationLoaded] = useState(false);
 
   useEffect(() => {
     const chartId = chart.id || `chart-${index}`;
