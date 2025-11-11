@@ -1,0 +1,16 @@
+{
+  "name": "supabase-cache-migration",
+  "private": true,
+  "scripts": {
+    "migrate": "ts-node scripts/apply-migration.ts",
+    "postinstall": "npm run migrate"
+  },
+  "dependencies": {
+    "pg": "^8.12.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}
+
