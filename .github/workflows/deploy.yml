@@ -108,6 +108,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Copy DB folder to backend
+        run: |
+          cp -r DB backend/DB || echo "DB folder not found, migration will be skipped"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

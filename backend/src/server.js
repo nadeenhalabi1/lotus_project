@@ -10,6 +10,7 @@ import { auditMiddleware } from './presentation/middleware/auditMiddleware.js';
 import { securityConfig } from './config/security.js';
 import { rateLimiter } from './presentation/middleware/rateLimiter.js';
 import { initializeJobs } from './infrastructure/jobs/index.js';
+import runMigration from '../scripts/runMigration.js';
 
 dotenv.config();
 
@@ -53,6 +54,9 @@ app.use(errorHandler);
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  
+  // Run database migration (if DATABASE_URL is set)
+  await runMigration();
   
   // Initialize scheduled jobs (async - loads initial mock data in development)
   await initializeJobs();
