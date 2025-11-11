@@ -10,7 +10,8 @@ const router = Router();
 
 /**
  * GET /api/v1/ai/chart-transcription/:chartId
- * Render flow: Returns transcription from DB only (no OpenAI call)
+ * Render flow: Returns transcription from DB only (no OpenAI call, no cache)
+ * DB is the single source of truth for all transcriptions
  */
 router.get('/chart-transcription/:chartId', async (req, res) => {
   const chartId = req.params.chartId;
@@ -26,23 +27,24 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
       });
     }
     
-    console.log(`[GET /chart-transcription/${chartId}] Querying database...`);
+    console.log(`[GET /chart-transcription/${chartId}] Querying database (DB-only, no cache)...`);
     const row = await getTranscriptionByChartId(chartId);
     
     if (!row) {
-      console.log(`[GET /chart-transcription/${chartId}] No transcription found (404)`);
+      console.log(`[GET /chart-transcription/${chartId}] No transcription found in DB (404)`);
       return res.status(404).json({ 
         ok: false, 
-        error: 'No transcription' 
+        error: 'No transcription in database' 
       });
     }
     
-    console.log(`[GET /chart-transcription/${chartId}] Transcription found, text length: ${row.transcription_text?.length || 0}`);
+    console.log(`[GET /chart-transcription/${chartId}] Transcription found in DB, text length: ${row.transcription_text?.length || 0}`);
+    // Return transcription directly from DB - DB is the single source of truth
     res.json({ 
       ok: true, 
       data: { 
         chartId: row.chart_id, 
-        text: row.transcription_text, 
+        text: row.transcription_text, // Direct from DB, no modification
         updatedAt: row.updated_at 
       } 
     });
@@ -111,11 +113,12 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
           continue;
         }
 
-        // Generate new transcription via OpenAI
-        console.log(`[startup-fill] Generating transcription for ${chartId}...`);
+        // Generate new transcription via OpenAI and save to DB
+        console.log(`[startup-fill] Generating transcription for ${chartId} via OpenAI...`);
         const text = await transcribeChartImage({ imageUrl, context: topic });
+        // Save to DB - DB is the single source of truth
         await upsertTranscription({ chartId, signature, text, model: 'gpt-4o' });
-        console.log(`[startup-fill] Chart ${chartId} transcription saved successfully`);
+        console.log(`[startup-fill] Chart ${chartId} transcription saved to DB successfully`);
         results.push({ chartId, status: 'updated', signature });
       } catch (err) {
         console.error(`[startup-fill] Error for chart ${chartId}:`, {
@@ -154,7 +157,9 @@ router.post('/chart-transcription/refresh', async (req, res) => {
     }
 
     const signature = computeChartSignature(topic, chartData);
+    // Generate new transcription via OpenAI
     const text = await transcribeChartImage({ imageUrl, context: topic });
+    // Save to DB - DB is the single source of truth (overwrites existing)
     await upsertTranscription({ chartId, signature, text, model: 'gpt-4o' });
 
     res.json({ 

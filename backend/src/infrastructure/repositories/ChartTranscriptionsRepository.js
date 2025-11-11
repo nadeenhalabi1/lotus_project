@@ -161,6 +161,8 @@ export async function getTranscriptionByChartId(chartId) {
 
 /**
  * Upsert explicit (newer API - accepts object)
+ * Saves transcription to DB - DB is the single source of truth
+ * No caching, no local storage - everything is managed in DB
  */
 export async function upsertTranscription({ chartId, signature, model = 'gpt-4o', text }) {
   if (!DATABASE_URL) {

@@ -14,7 +14,7 @@ import html2canvas from 'html2canvas';
 const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarrationReady }) => {
   const chartCardRef = useRef(null); // Ref for the entire card
   const chartOnlyRef = useRef(null); // Ref for chart area only (without narration)
-  const [transcriptionText, setTranscriptionText] = useState(''); // Local state - always synced with DB
+  const [transcriptionText, setTranscriptionText] = useState(''); // Local state - always synced with DB (no local cache)
   const [loading, setLoading] = useState(false);
   const loadedChartIdRef = useRef(null); // Track which chart we loaded
   const loadingRef = useRef(false); // Prevent multiple simultaneous loads
@@ -44,11 +44,13 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           console.log(`[Reports Chart ${chartId}] 🔄 Fetching transcription directly from DB (GET /ai/chart-transcription/${chartId})...`);
         }
         
-        // Call API directly - always fetch from DB, no cache
+        // Call API directly - ALWAYS fetch from DB, NO local cache
+        // This ensures transcriptions are managed ONLY in DB
         const res = await chartTranscriptionAPI.getTranscription(chartId);
         const dbTranscriptionText = res.data.data?.text || null;
         
         // Always set what's in DB (even if null) - this ensures sync with DB
+        // NO local caching - DB is the single source of truth
         setTranscriptionText(dbTranscriptionText || '');
         loadedChartIdRef.current = chartId;
         retryCountRef.current = 0; // Reset retry count on success
@@ -229,13 +231,160 @@ const ReportsPage = () => {
       setChartNarrations({});
 
       // Generate report as JSON (to display on page)
-      // NOTE: No automatic transcription generation - transcriptions are loaded from DB only
       const response = await reportsAPI.generateReport(reportId, { format: 'json' });
       const report = response.data.report;
       setReportData(report);
       setSelectedReport(reportId);
       
-      // Transcriptions will be loaded automatically from DB by ChartWithNarration components
+      // After report is generated, wait for charts to render and create transcriptions for charts that don't have them
+      // This ensures ALL charts have transcriptions
+      setTimeout(async () => {
+        if (report.charts && report.charts.length > 0) {
+          try {
+            // Wait for charts to render
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // Prepare charts array for startup-fill (only for charts without transcriptions)
+            const chartsForFill = [];
+            
+            for (let i = 0; i < report.charts.length; i++) {
+              const chart = report.charts[i];
+              const chartId = chart.id || `chart-${i}`;
+              
+              try {
+                // First check if transcription exists in DB (DB is the single source of truth)
+                let needsTranscription = true;
+                try {
+                  const existingTranscription = await chartTranscriptionAPI.getTranscription(chartId);
+                  if (existingTranscription.data?.data?.text) {
+                    console.log(`[Reports] Chart ${chartId} already has transcription in DB, skipping`);
+                    needsTranscription = false;
+                  }
+                } catch (err) {
+                  // 404 means no transcription in DB - that's OK, we'll create one
+                  if (err.response?.status === 404) {
+                    console.log(`[Reports] Chart ${chartId} has no transcription in DB, will create one`);
+                    needsTranscription = true;
+                  } else {
+                    console.warn(`[Reports] Error checking transcription in DB for ${chartId}:`, err);
+                    continue; // Skip this chart if there's an error
+                  }
+                }
+                
+                // Skip if transcription already exists in DB
+                if (!needsTranscription) {
+                  continue;
+                }
+                
+                // Find the chart element
+                let chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
+                
+                // Fallback: try to find by index
+                if (!chartElement) {
+                  const allChartCards = document.querySelectorAll('[data-chart-id]');
+                  if (allChartCards[i]) {
+                    chartElement = allChartCards[i].querySelector('[data-chart-only="true"]');
+                  }
+                }
+                
+                if (chartElement) {
+                  console.log(`[Reports] Capturing chart ${chartId} for transcription...`);
+                  // Capture chart image
+                  const canvas = await html2canvas(chartElement, {
+                    backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
+                    scale: 1,
+                    logging: false,
+                    useCORS: true
+                  });
+                  
+                  const imageUrl = canvas.toDataURL('image/png');
+                  const topic = `${report.executiveSummary?.title || reportId} - ${chart.title}`;
+                  
+                  chartsForFill.push({
+                    chartId,
+                    topic,
+                    chartData: chart.data || {},
+                    imageUrl
+                  });
+                } else {
+                  console.warn(`[Reports] Chart element not found for ${chartId}, will retry later`);
+                }
+              } catch (err) {
+                console.error(`[Reports] Failed to prepare chart ${chartId} for transcription:`, err);
+                // Continue with other charts
+              }
+            }
+            
+            // Batch process all charts that need transcriptions
+            if (chartsForFill.length > 0) {
+              console.log(`[Reports] Creating transcriptions for ${chartsForFill.length} charts without transcriptions in DB...`);
+              
+              // Process in batches of 2 to avoid rate limiting and improve performance
+              const batchSize = 2;
+              const failedCharts = [];
+              
+              for (let i = 0; i < chartsForFill.length; i += batchSize) {
+                const batch = chartsForFill.slice(i, i + batchSize);
+                try {
+                  console.log(`[Reports] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(chartsForFill.length / batchSize)}...`);
+                  const results = await chartTranscriptionAPI.startupFill(batch);
+                  
+                  // Check for failed charts in this batch
+                  if (results.data?.results) {
+                    results.data.results.forEach((result, idx) => {
+                      if (result.status === 'error') {
+                        failedCharts.push(batch[idx]);
+                        console.warn(`[Reports] Chart ${batch[idx].chartId} failed: ${result.error}`);
+                      }
+                    });
+                  }
+                  
+                  console.log(`[Reports] Batch ${Math.floor(i / batchSize) + 1} completed`);
+                  
+                  // Wait between batches to avoid rate limiting
+                  if (i + batchSize < chartsForFill.length) {
+                    await new Promise(resolve => setTimeout(resolve, 3000)); // Increased delay
+                  }
+                } catch (err) {
+                  console.error(`[Reports] Failed to process batch:`, err);
+                  // Add all charts from failed batch to retry list
+                  failedCharts.push(...batch);
+                  // Continue with next batch
+                }
+              }
+              
+              // Retry failed charts once
+              if (failedCharts.length > 0) {
+                console.log(`[Reports] Retrying ${failedCharts.length} failed charts...`);
+                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait before retry
+                
+                for (const chart of failedCharts) {
+                  try {
+                    await chartTranscriptionAPI.startupFill([chart]);
+                    console.log(`[Reports] Retry successful for ${chart.chartId}`);
+                  } catch (err) {
+                    console.error(`[Reports] Retry failed for ${chart.chartId}:`, err);
+                  }
+                  // Wait between retries
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                }
+              }
+              
+              console.log(`[Reports] Transcription creation process completed`);
+              
+              // Trigger reload of transcriptions after a delay to ensure DB is updated
+              setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('reportTranscriptionsRefreshed'));
+              }, 3000);
+            } else {
+              console.log(`[Reports] All charts already have transcriptions in DB`);
+            }
+          } catch (err) {
+            console.error('[Reports] Failed to create transcriptions:', err);
+            // Don't fail the report generation if transcription creation fails
+          }
+        }
+      }, 100);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to generate report');
     } finally {
