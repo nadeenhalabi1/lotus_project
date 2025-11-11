@@ -21,11 +21,16 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
   const retryCountRef = useRef(0); // Track retry attempts
 
   useEffect(() => {
+    // Ensure consistent chartId - must match the data-chart-id attribute
     const chartId = chart.id || `chart-${index}`;
     
     if (!chartId) {
+      console.error(`[Reports Chart] No chartId available for chart at index ${index}`);
       return;
     }
+    
+    // Log chartId for debugging
+    console.log(`[Reports Chart] Loading transcription for chartId="${chartId}" (chart.id="${chart.id}", index=${index})`);
     
     // Always load transcription directly from DB (no cache, no hook state)
     const loadTranscriptionFromDB = async (isRetry = false) => {
@@ -46,6 +51,7 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
         
         // Call API directly - ALWAYS fetch from DB, NO local cache
         // This ensures transcriptions are managed ONLY in DB
+        console.log(`[Reports Chart ${chartId}] Fetching from DB...`);
         const res = await chartTranscriptionAPI.getTranscription(chartId);
         const dbTranscriptionText = res.data.data?.text || null;
         
@@ -55,8 +61,9 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
         loadedChartIdRef.current = chartId;
         retryCountRef.current = 0; // Reset retry count on success
         
+        // Log what we got from DB for debugging
         if (dbTranscriptionText) {
-          console.log(`[Reports Chart ${chartId}] ✅ Transcription from DB (transcription_text field):`, dbTranscriptionText.substring(0, 50) + '...');
+          console.log(`[Reports Chart ${chartId}] ✅ Got transcription from DB (${dbTranscriptionText.length} chars):`, dbTranscriptionText.substring(0, 50) + '...');
           // Notify parent component
           if (onNarrationReady) {
             onNarrationReady(chartId, dbTranscriptionText);
@@ -146,11 +153,22 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
     };
   }, [chart.id, index, onNarrationReady]);
 
+  // Ensure consistent chartId - use chart.id if available, otherwise use index-based ID
+  // This MUST match the chartId used in useEffect for loading transcriptions
+  const chartId = chart.id || `chart-${index}`;
+  
+  // Log chartId for debugging consistency
+  if (chart.id) {
+    console.log(`[Reports Chart Render] Using chart.id="${chart.id}" for chart at index ${index}`);
+  } else {
+    console.log(`[Reports Chart Render] Using fallback chartId="chart-${index}" (chart.id is missing)`);
+  }
+  
   return (
     <div 
       ref={chartCardRef}
       className="card"
-      data-chart-id={chart.id || index}
+      data-chart-id={chartId}
     >
       <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
         {chart.title}
@@ -276,36 +294,74 @@ const ReportsPage = () => {
                   continue;
                 }
                 
-                // Find the chart element
+                // Find the chart element using the exact chartId
+                // First try with the chartId we computed
                 let chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
                 
-                // Fallback: try to find by index
+                // Fallback: try to find by index if chartId doesn't match
                 if (!chartElement) {
+                  console.warn(`[Reports] Chart element not found for chartId="${chartId}", trying by index ${i}`);
                   const allChartCards = document.querySelectorAll('[data-chart-id]');
                   if (allChartCards[i]) {
+                    const fallbackChartId = allChartCards[i].getAttribute('data-chart-id');
+                    console.log(`[Reports] Found fallback chartId="${fallbackChartId}" at index ${i}`);
                     chartElement = allChartCards[i].querySelector('[data-chart-only="true"]');
+                    // Log mismatch for debugging
+                    if (fallbackChartId && fallbackChartId !== chartId) {
+                      console.warn(`[Reports] ⚠️ ChartId mismatch: expected "${chartId}", found "${fallbackChartId}" - this may cause transcription mismatch!`);
+                    }
                   }
                 }
                 
                 if (chartElement) {
-                  console.log(`[Reports] Capturing chart ${chartId} for transcription...`);
-                  // Capture chart image
-                  const canvas = await html2canvas(chartElement, {
-                    backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
-                    scale: 1,
-                    logging: false,
-                    useCORS: true
-                  });
-                  
-                  const imageUrl = canvas.toDataURL('image/png');
-                  const topic = `${report.executiveSummary?.title || reportId} - ${chart.title}`;
-                  
-                  chartsForFill.push({
-                    chartId,
-                    topic,
-                    chartData: chart.data || {},
-                    imageUrl
-                  });
+                  // Verify chartId matches the DOM element
+                  const actualChartId = chartElement.closest('[data-chart-id]')?.getAttribute('data-chart-id');
+                  if (actualChartId && actualChartId !== chartId) {
+                    console.error(`[Reports] ⚠️ CRITICAL: ChartId mismatch! Expected "${chartId}", but DOM has "${actualChartId}"`);
+                    console.error(`[Reports] This will cause transcription to be saved/loaded with wrong chartId!`);
+                    // Use the actual chartId from DOM to ensure consistency
+                    const correctedChartId = actualChartId;
+                    console.log(`[Reports] Using corrected chartId: "${correctedChartId}"`);
+                    
+                    console.log(`[Reports] Capturing chart ${correctedChartId} for transcription...`);
+                    // Capture chart image
+                    const canvas = await html2canvas(chartElement, {
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
+                      scale: 1,
+                      logging: false,
+                      useCORS: true
+                    });
+                    
+                    const imageUrl = canvas.toDataURL('image/png');
+                    const topic = `${report.executiveSummary?.title || reportId} - ${chart.title}`;
+                    
+                    chartsForFill.push({
+                      chartId: correctedChartId, // Use corrected chartId
+                      topic,
+                      chartData: chart.data || {},
+                      imageUrl
+                    });
+                  } else {
+                    console.log(`[Reports] ✅ ChartId matches: "${chartId}"`);
+                    console.log(`[Reports] Capturing chart ${chartId} for transcription...`);
+                    // Capture chart image
+                    const canvas = await html2canvas(chartElement, {
+                      backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
+                      scale: 1,
+                      logging: false,
+                      useCORS: true
+                    });
+                    
+                    const imageUrl = canvas.toDataURL('image/png');
+                    const topic = `${report.executiveSummary?.title || reportId} - ${chart.title}`;
+                    
+                    chartsForFill.push({
+                      chartId,
+                      topic,
+                      chartData: chart.data || {},
+                      imageUrl
+                    });
+                  }
                 } else {
                   console.warn(`[Reports] Chart element not found for ${chartId}, will retry later`);
                 }
