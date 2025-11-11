@@ -1,16 +1,26 @@
 // ESM module (no CommonJS)
-import { createClient } from '@supabase/supabase-js';
+import pkg from 'pg';
+const { Client } = pkg;
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
+const DATABASE_URL = process.env.DATABASE_URL;
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.warn('[ChartTranscriptionsRepository] Missing SUPABASE_URL / SUPABASE_KEY envs');
+if (!DATABASE_URL) {
+  console.warn('[ChartTranscriptionsRepository] Missing DATABASE_URL env');
 }
 
-export const supabase = SUPABASE_URL && SUPABASE_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_KEY)
-  : null;
+// Helper to get database client
+function getDbClient() {
+  if (!DATABASE_URL) {
+    throw new Error('DATABASE_URL not available');
+  }
+  return new Client({
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false } // Required for Supabase/PostgreSQL
+  });
+}
+
+// Export for compatibility (not used, but routes check it)
+export const supabase = DATABASE_URL ? {} : null;
 
 /* ----------------- EXACT NAMES REQUIRED BY ROUTES ----------------- */
 
@@ -19,23 +29,33 @@ export const supabase = SUPABASE_URL && SUPABASE_KEY
  * Compatibility: "cached" by chartId+signature (matches old import name)
  */
 export async function getCachedTranscription(chartId, signature) {
-  if (!supabase) {
-    console.error('[getCachedTranscription] Supabase client not available');
+  if (!DATABASE_URL) {
+    console.error('[getCachedTranscription] DATABASE_URL not available');
     return null;
   }
   
-  const { data, error } = await supabase
-    .from('ai_chart_transcriptions')
-    .select('transcription_text, chart_signature')
-    .eq('chart_id', chartId)
-    .eq('chart_signature', signature)
-    .maybeSingle();
-
-  if (error) {
-    console.error('[getCachedTranscription] Supabase error:', error.message);
+  const client = getDbClient();
+  try {
+    await client.connect();
+    const result = await client.query(
+      `SELECT transcription_text, chart_signature 
+       FROM ai_chart_transcriptions 
+       WHERE chart_id = $1 AND chart_signature = $2 
+       LIMIT 1`,
+      [chartId, signature]
+    );
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    return result.rows[0].transcription_text || null;
+  } catch (err) {
+    console.error('[getCachedTranscription] Database error:', err.message);
     return null;
+  } finally {
+    await client.end();
   }
-  return data?.transcription_text ?? null;
 }
 
 /**
@@ -44,24 +64,30 @@ export async function getCachedTranscription(chartId, signature) {
  * Note: Accepts 4 separate parameters (chartId, signature, model, text) for compatibility
  */
 export async function saveTranscription(chartId, signature, model, text) {
-  if (!supabase) {
-    throw new Error('Supabase client not available - check SUPABASE_URL and SUPABASE_KEY');
+  if (!DATABASE_URL) {
+    throw new Error('DATABASE_URL not available');
   }
   
-  const { error } = await supabase
-    .from('ai_chart_transcriptions')
-    .upsert({
-      chart_id: chartId,
-      chart_signature: signature,
-      model: model || 'gpt-4o',
-      transcription_text: text
-    }, { 
-      onConflict: 'chart_id' 
-    });
-
-  if (error) {
-    console.error('[saveTranscription] Supabase upsert error:', error.message);
-    throw new Error(error.message);
+  const client = getDbClient();
+  try {
+    await client.connect();
+    await client.query(
+      `INSERT INTO ai_chart_transcriptions 
+       (chart_id, chart_signature, model, transcription_text, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (chart_id) 
+       DO UPDATE SET 
+         chart_signature = EXCLUDED.chart_signature,
+         model = EXCLUDED.model,
+         transcription_text = EXCLUDED.transcription_text,
+         updated_at = NOW()`,
+      [chartId, signature, model || 'gpt-4o', text]
+    );
+  } catch (err) {
+    console.error('[saveTranscription] Database error:', err.message);
+    throw new Error(err.message);
+  } finally {
+    await client.end();
   }
 }
 
@@ -71,32 +97,37 @@ export async function saveTranscription(chartId, signature, model, text) {
  * Get by chart_id only (no signature)
  */
 export async function getTranscriptionByChartId(chartId) {
-  if (!supabase) {
-    console.error('[getTranscriptionByChartId] Supabase client not available');
-    throw new Error('Supabase client not available - check SUPABASE_URL and SUPABASE_KEY');
+  if (!DATABASE_URL) {
+    throw new Error('DATABASE_URL not available');
   }
   
+  const client = getDbClient();
   try {
-    const { data, error } = await supabase
-      .from('ai_chart_transcriptions')
-      .select('chart_id, chart_signature, transcription_text, updated_at')
-      .eq('chart_id', chartId)
-      .maybeSingle();
-      
-    if (error) {
-      console.error(`[getTranscriptionByChartId] Supabase error for ${chartId}:`, {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint
-      });
-      throw new Error(`Database error: ${error.message}`);
+    await client.connect();
+    const result = await client.query(
+      `SELECT chart_id, chart_signature, transcription_text, updated_at 
+       FROM ai_chart_transcriptions 
+       WHERE chart_id = $1 
+       LIMIT 1`,
+      [chartId]
+    );
+    
+    if (result.rows.length === 0) {
+      return null;
     }
     
-    return data || null;
+    const row = result.rows[0];
+    return {
+      chart_id: row.chart_id,
+      chart_signature: row.chart_signature,
+      transcription_text: row.transcription_text,
+      updated_at: row.updated_at
+    };
   } catch (err) {
-    console.error(`[getTranscriptionByChartId] Exception for ${chartId}:`, err.message);
-    throw err;
+    console.error(`[getTranscriptionByChartId] Database error for ${chartId}:`, err.message);
+    throw new Error(`Database error: ${err.message}`);
+  } finally {
+    await client.end();
   }
 }
 
@@ -104,23 +135,30 @@ export async function getTranscriptionByChartId(chartId) {
  * Upsert explicit (newer API - accepts object)
  */
 export async function upsertTranscription({ chartId, signature, model = 'gpt-4o', text }) {
-  if (!supabase) {
-    throw new Error('Supabase client not available - check SUPABASE_URL and SUPABASE_KEY');
+  if (!DATABASE_URL) {
+    throw new Error('DATABASE_URL not available');
   }
   
-  const { error } = await supabase
-    .from('ai_chart_transcriptions')
-    .upsert({
-      chart_id: chartId,
-      chart_signature: signature,
-      model,
-      transcription_text: text
-    }, { 
-      onConflict: 'chart_id' 
-    });
-    
-  if (error) {
-    throw new Error(error.message);
+  const client = getDbClient();
+  try {
+    await client.connect();
+    await client.query(
+      `INSERT INTO ai_chart_transcriptions 
+       (chart_id, chart_signature, model, transcription_text, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (chart_id) 
+       DO UPDATE SET 
+         chart_signature = EXCLUDED.chart_signature,
+         model = EXCLUDED.model,
+         transcription_text = EXCLUDED.transcription_text,
+         updated_at = NOW()`,
+      [chartId, signature, model, text]
+    );
+  } catch (err) {
+    console.error('[upsertTranscription] Database error:', err.message);
+    throw new Error(err.message);
+  } finally {
+    await client.end();
   }
 }
 
@@ -128,17 +166,22 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
  * Optional: delete by chart
  */
 export async function deleteTranscriptionByChartId(chartId) {
-  if (!supabase) {
-    throw new Error('Supabase client not available - check SUPABASE_URL and SUPABASE_KEY');
+  if (!DATABASE_URL) {
+    throw new Error('DATABASE_URL not available');
   }
   
-  const { error } = await supabase
-    .from('ai_chart_transcriptions')
-    .delete()
-    .eq('chart_id', chartId);
-    
-  if (error) {
-    throw new Error(error.message);
+  const client = getDbClient();
+  try {
+    await client.connect();
+    await client.query(
+      `DELETE FROM ai_chart_transcriptions WHERE chart_id = $1`,
+      [chartId]
+    );
+  } catch (err) {
+    console.error('[deleteTranscriptionByChartId] Database error:', err.message);
+    throw new Error(err.message);
+  } finally {
+    await client.end();
   }
 }
 

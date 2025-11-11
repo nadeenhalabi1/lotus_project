@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { getTranscriptionByChartId, upsertTranscription, supabase } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
+import { getTranscriptionByChartId, upsertTranscription } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
 import { computeChartSignature } from '../../utils/chartSignature.js';
 import { transcribeChartImage } from '../../application/services/transcribeChartService.js';
 
 console.debug('[AI] chartTranscription route loaded. Signature function OK.');
-console.debug('[BOOT] Supabase available:', !!supabase);
+console.debug('[BOOT] DATABASE_URL available:', !!process.env.DATABASE_URL);
 
 const router = Router();
 
@@ -17,9 +17,9 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
   try {
     console.log(`[GET /chart-transcription/${chartId}] Request received`);
     
-    // Check if Supabase is available
-    if (!supabase) {
-      console.error(`[GET /chart-transcription/${chartId}] Supabase client not available`);
+    // Check if DATABASE_URL is available
+    if (!process.env.DATABASE_URL) {
+      console.error(`[GET /chart-transcription/${chartId}] DATABASE_URL not available`);
       return res.status(503).json({ 
         ok: false, 
         error: 'Database service unavailable' 
