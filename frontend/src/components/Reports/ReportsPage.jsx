@@ -51,8 +51,14 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
         
         // Call API directly - ALWAYS fetch from DB, NO local cache
         // This ensures transcriptions are managed ONLY in DB
-        console.log(`[Reports Chart ${chartId}] Fetching from DB...`);
-        const res = await chartTranscriptionAPI.getTranscription(chartId);
+        // Pass topic and chartData to verify signature matches current data
+        console.log(`[Reports Chart ${chartId}] Fetching from DB with signature verification...`);
+        
+        // Get current chart data for signature verification
+        const topic = `${reportTitle || 'Report'} - ${chart.title || chartId}`;
+        const chartData = chart.data || {};
+        
+        const res = await chartTranscriptionAPI.getTranscription(chartId, topic, chartData);
         const dbTranscriptionText = res.data.data?.text || null;
         
         // Always set what's in DB (even if null) - this ensures sync with DB
@@ -73,9 +79,58 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
         }
       } catch (error) {
         if (error.response?.status === 404) {
-          // No transcription in DB - this is OK
-          console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text in DB (404)`);
-          setTranscriptionText(''); // Clear - sync with DB (no data)
+          const isSignatureMismatch = error.response?.data?.signatureMismatch;
+          
+          if (isSignatureMismatch) {
+            // Transcription exists but is outdated - data has changed
+            console.log(`[Reports Chart ${chartId}] ⚠️ Transcription outdated - data has changed`);
+            console.log(`[Reports Chart ${chartId}] Current signature: ${error.response?.data?.currentSignature}`);
+            console.log(`[Reports Chart ${chartId}] Stored signature: ${error.response?.data?.storedSignature}`);
+            console.log(`[Reports Chart ${chartId}] Creating new transcription with current data...`);
+            
+            // Clear transcription text - it's outdated
+            setTranscriptionText('');
+            
+            // Wait for chart to render, then create new transcription
+            setTimeout(async () => {
+              try {
+                // Find the chart element
+                const chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
+                if (chartElement) {
+                  console.log(`[Reports Chart ${chartId}] Capturing chart image for new transcription...`);
+                  // Capture chart image
+                  // Detect theme from document
+                  const isDark = document.documentElement.classList.contains('dark');
+                  const canvas = await html2canvas(chartElement, {
+                    backgroundColor: isDark ? '#1f2937' : '#ffffff',
+                    scale: 1,
+                    logging: false,
+                    useCORS: true
+                  });
+                  
+                  const imageUrl = canvas.toDataURL('image/png');
+                  const topic = `${reportTitle || 'Report'} - ${chart.title || chartId}`;
+                  
+                  // Create new transcription with current data
+                  await chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, chart.data || {});
+                  console.log(`[Reports Chart ${chartId}] ✅ New transcription created with current data`);
+                  
+                  // Reload transcription from DB
+                  setTimeout(() => {
+                    loadTranscriptionFromDB();
+                  }, 1000);
+                } else {
+                  console.warn(`[Reports Chart ${chartId}] Chart element not found, cannot create new transcription`);
+                }
+              } catch (err) {
+                console.error(`[Reports Chart ${chartId}] Failed to create new transcription:`, err);
+              }
+            }, 2000); // Wait for chart to render
+          } else {
+            // No transcription in DB - this is OK
+            console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text in DB (404)`);
+            setTranscriptionText(''); // Clear - sync with DB (no data)
+          }
           retryCountRef.current = 0; // Reset retry count for 404
         } else if (error.response?.status === 429) {
           // Rate limit exceeded - retry with exponential backoff

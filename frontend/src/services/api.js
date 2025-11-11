@@ -132,8 +132,16 @@ export const openaiAPI = {
 // Chart Transcription API (DB-first flow)
 export const chartTranscriptionAPI = {
   // GET: Read transcription from DB only (no OpenAI call) - Render flow
-  getTranscription: (chartId) => {
-    return api.get(`/ai/chart-transcription/${chartId}`);
+  // If topic and chartData are provided, signature is verified
+  // If signature doesn't match, returns 404 to trigger new transcription creation
+  getTranscription: (chartId, topic, chartData) => {
+    const params = {};
+    if (topic !== undefined) params.topic = topic;
+    if (chartData !== undefined) {
+      // Convert chartData to JSON string if it's an object
+      params.chartData = typeof chartData === 'string' ? chartData : JSON.stringify(chartData);
+    }
+    return api.get(`/ai/chart-transcription/${chartId}`, { params });
   },
   // POST: Startup fill - batch process all charts (runs OpenAI only if needed)
   startupFill: (charts) => {

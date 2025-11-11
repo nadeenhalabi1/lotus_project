@@ -12,9 +12,18 @@ const router = Router();
  * GET /api/v1/ai/chart-transcription/:chartId
  * Render flow: Returns transcription from DB only (no OpenAI call, no cache)
  * DB is the single source of truth for all transcriptions
+ * 
+ * Query params (optional):
+ * - topic: Chart topic/context for signature verification
+ * - chartData: JSON string of chart data for signature verification
+ * 
+ * If topic and chartData are provided, signature is verified.
+ * If signature doesn't match, returns 404 to trigger new transcription creation.
  */
 router.get('/chart-transcription/:chartId', async (req, res) => {
   const chartId = req.params.chartId;
+  const { topic, chartData } = req.query;
+  
   try {
     console.log(`[GET /chart-transcription/${chartId}] Request received`);
     
@@ -38,6 +47,38 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
       });
     }
     
+    // If topic and chartData are provided, verify signature matches current data
+    if (topic !== undefined && chartData !== undefined) {
+      try {
+        const currentSignature = computeChartSignature(
+          topic, 
+          typeof chartData === 'string' ? JSON.parse(chartData) : chartData
+        );
+        const storedSignature = row.chart_signature;
+        
+        if (currentSignature !== storedSignature) {
+          console.log(`[GET /chart-transcription/${chartId}] ⚠️ Signature mismatch!`);
+          console.log(`[GET /chart-transcription/${chartId}] Current signature: ${currentSignature.substring(0, 16)}...`);
+          console.log(`[GET /chart-transcription/${chartId}] Stored signature: ${storedSignature?.substring(0, 16) || 'null'}...`);
+          console.log(`[GET /chart-transcription/${chartId}] Chart data has changed - transcription is outdated`);
+          
+          // Return 404 to indicate transcription needs to be regenerated
+          return res.status(404).json({ 
+            ok: false, 
+            error: 'Transcription outdated - data has changed',
+            signatureMismatch: true,
+            currentSignature: currentSignature.substring(0, 16) + '...',
+            storedSignature: storedSignature?.substring(0, 16) + '...' || 'null'
+          });
+        } else {
+          console.log(`[GET /chart-transcription/${chartId}] ✅ Signature matches - transcription is up to date`);
+        }
+      } catch (err) {
+        console.warn(`[GET /chart-transcription/${chartId}] Error verifying signature:`, err.message);
+        // Continue anyway - return transcription even if signature check fails
+      }
+    }
+    
     console.log(`[GET /chart-transcription/${chartId}] Transcription found in DB, text length: ${row.transcription_text?.length || 0}`);
     // Return transcription directly from DB - DB is the single source of truth
     res.json({ 
@@ -45,7 +86,8 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
       data: { 
         chartId: row.chart_id, 
         text: row.transcription_text, // Direct from DB, no modification
-        updatedAt: row.updated_at 
+        updatedAt: row.updated_at,
+        signature: row.chart_signature?.substring(0, 16) + '...' // For debugging
       } 
     });
   } catch (err) {
