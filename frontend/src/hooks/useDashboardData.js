@@ -219,7 +219,72 @@ export const useDashboardData = () => {
               }
             }
             
-            console.log(`[Dashboard Refresh] All chart transcriptions refreshed successfully`);
+            console.log(`[Dashboard Refresh] All dashboard chart transcriptions refreshed successfully`);
+            
+            // Also refresh transcriptions for report charts (if Reports page is active)
+            try {
+              console.log('[Dashboard Refresh] Checking for report charts to refresh...');
+              
+              // Find all report chart elements (they have data-chart-only="true" attribute)
+              const reportChartElements = document.querySelectorAll('[data-chart-id][data-chart-only="true"]');
+              
+              if (reportChartElements.length > 0) {
+                console.log(`[Dashboard Refresh] Found ${reportChartElements.length} report charts to refresh`);
+                
+                // Get parent chart cards to extract chart IDs
+                const reportChartsToRefresh = [];
+                
+                reportChartElements.forEach((chartElement) => {
+                  const chartCard = chartElement.closest('[data-chart-id]');
+                  if (chartCard) {
+                    const chartId = chartCard.getAttribute('data-chart-id');
+                    if (chartId) {
+                      reportChartsToRefresh.push({
+                        chartId,
+                        element: chartElement
+                      });
+                    }
+                  }
+                });
+                
+                // Refresh transcriptions for report charts
+                for (const { chartId, element } of reportChartsToRefresh) {
+                  try {
+                    // Capture chart image
+                    const canvas = await html2canvas(element, {
+                      backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
+                      scale: 1,
+                      logging: false,
+                      useCORS: true
+                    });
+                    
+                    const imageUrl = canvas.toDataURL('image/png');
+                    
+                    // Try to get chart title from the card
+                    const chartCard = element.closest('[data-chart-id]');
+                    const chartTitle = chartCard?.querySelector('h4')?.textContent || chartId;
+                    const topic = `Report - ${chartTitle}`;
+                    
+                    // Refresh transcription via OpenAI (overwrites old one in DB)
+                    await chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, {});
+                    console.log(`[Dashboard Refresh] Report chart ${chartId} transcription refreshed`);
+                  } catch (err) {
+                    console.error(`[Dashboard Refresh] Failed to refresh transcription for report chart ${chartId}:`, err);
+                    // Continue with other charts even if one fails
+                  }
+                }
+                
+                console.log(`[Dashboard Refresh] All report chart transcriptions refreshed successfully`);
+                
+                // Dispatch custom event to notify Reports page to reload transcriptions
+                window.dispatchEvent(new CustomEvent('reportTranscriptionsRefreshed'));
+              } else {
+                console.log('[Dashboard Refresh] No report charts found to refresh');
+              }
+            } catch (err) {
+              console.error('[Dashboard Refresh] Failed to refresh report chart transcriptions:', err);
+              // Don't fail the whole refresh if report transcription refresh fails
+            }
           } catch (err) {
             console.error('[Dashboard Refresh] Failed to refresh chart transcriptions:', err);
             // Don't fail the whole refresh if transcription refresh fails

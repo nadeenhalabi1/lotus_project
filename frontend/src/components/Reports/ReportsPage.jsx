@@ -74,8 +74,20 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
       loadTranscriptionFromDB();
     }, 2000);
 
+    // Listen for refresh event from dashboard
+    const handleRefreshEvent = () => {
+      console.log(`[Reports Chart ${chartId}] 🔄 Refresh event received, reloading transcription from DB...`);
+      // Wait a bit for DB to be updated, then reload
+      setTimeout(() => {
+        loadTranscriptionFromDB();
+      }, 1000);
+    };
+
+    window.addEventListener('reportTranscriptionsRefreshed', handleRefreshEvent);
+
     return () => {
       clearTimeout(timer);
+      window.removeEventListener('reportTranscriptionsRefreshed', handleRefreshEvent);
     };
   }, [chart.id, index, onNarrationReady]);
 
@@ -164,80 +176,13 @@ const ReportsPage = () => {
       setChartNarrations({});
 
       // Generate report as JSON (to display on page)
+      // NOTE: No automatic transcription generation - transcriptions are loaded from DB only
       const response = await reportsAPI.generateReport(reportId, { format: 'json' });
       const report = response.data.report;
       setReportData(report);
       setSelectedReport(reportId);
-
-          // After report is generated, wait for charts to render and then fill transcriptions (only once)
-          setTimeout(async () => {
-            if (report.charts && report.charts.length > 0) {
-              try {
-                // Wait for charts to render
-                await new Promise(resolve => setTimeout(resolve, 1500));
-
-                // Prepare charts array for startup-fill
-                const chartsForFill = [];
-                for (let i = 0; i < report.charts.length; i++) {
-                  const chart = report.charts[i];
-                  const chartId = chart.id || `chart-${i}`;
-                  
-                  console.log(`[Reports] Looking for chart element: [data-chart-id="${chartId}"]`);
-                  
-                  // Find the chart element - try multiple selectors
-                  let chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
-                  
-                  // Fallback: try to find by index
-                  if (!chartElement) {
-                    const allChartCards = document.querySelectorAll('[data-chart-id]');
-                    if (allChartCards[i]) {
-                      chartElement = allChartCards[i].querySelector('[data-chart-only="true"]');
-                    }
-                  }
-                  
-                  if (chartElement) {
-                    try {
-                      console.log(`[Reports] Capturing chart ${chartId}...`);
-                      // Capture chart image
-                      const canvas = await html2canvas(chartElement, {
-                        backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
-                        scale: 1,
-                        logging: false,
-                        useCORS: true
-                      });
-                      
-                      const imageUrl = canvas.toDataURL('image/png');
-                      const topic = `${report.executiveSummary?.title || reportId} - ${chart.title}`;
-                      
-                      console.log(`[Reports] Chart ${chartId} captured, image size: ${imageUrl.length} bytes`);
-                      
-                      chartsForFill.push({
-                        chartId,
-                        topic,
-                        chartData: chart.data || {},
-                        imageUrl
-                      });
-                    } catch (err) {
-                      console.error(`[Reports] Failed to capture chart ${chartId} for transcription:`, err);
-                    }
-                  } else {
-                    console.warn(`[Reports] Chart element not found for ${chartId}`);
-                  }
-                }
-
-                // Call startup-fill API (only once per report generation)
-                if (chartsForFill.length > 0) {
-                  console.log(`[Reports] Filling transcriptions for ${chartsForFill.length} charts (one time only)...`);
-                  const results = await chartTranscriptionAPI.startupFill(chartsForFill);
-                  console.log('[Reports] Transcriptions filled successfully', results);
-                  
-                  // No need to trigger event - charts will load automatically after 2 seconds
-                }
-              } catch (err) {
-                console.error('[Reports] Failed to fill transcriptions:', err);
-              }
-            }
-          }, 100);
+      
+      // Transcriptions will be loaded automatically from DB by ChartWithNarration components
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to generate report');
     } finally {
