@@ -22,34 +22,54 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
     const chartId = chart.id || `chart-${index}`;
     
     // Load transcription from DB when chart is rendered
-    const loadTranscription = async () => {
+    const loadTranscription = async (retryCount = 0) => {
       if (!chartId) {
-        console.warn('Chart has no ID, skipping transcription load');
+        console.warn(`[Chart ${chartId}] No ID, skipping transcription load`);
         return;
       }
 
       try {
+        console.log(`[Chart ${chartId}] Loading transcription from DB...`);
         const narrationText = await getTranscription(chartId);
         
-        // Notify parent component about the narration
-        if (onNarrationReady && narrationText) {
-          onNarrationReady(chartId, narrationText);
+        if (narrationText) {
+          console.log(`[Chart ${chartId}] Transcription loaded:`, narrationText.substring(0, 50) + '...');
+          // Notify parent component about the narration
+          if (onNarrationReady) {
+            onNarrationReady(chartId, narrationText);
+          }
+        } else {
+          console.log(`[Chart ${chartId}] No transcription found in DB`);
+          // Retry after a delay if transcription not found (might still be generating)
+          if (retryCount < 3) {
+            console.log(`[Chart ${chartId}] Retrying in 3 seconds... (attempt ${retryCount + 1}/3)`);
+            setTimeout(() => {
+              loadTranscription(retryCount + 1);
+            }, 3000);
+          }
         }
       } catch (error) {
-        console.error('Failed to load chart transcription:', error);
+        console.error(`[Chart ${chartId}] Failed to load transcription:`, error);
+        // Retry on error
+        if (retryCount < 2) {
+          setTimeout(() => {
+            loadTranscription(retryCount + 1);
+          }, 2000);
+        }
       }
     };
 
-    // Wait a bit for chart to render before loading transcription
+    // Wait a bit for chart to render and startup-fill to potentially complete
     const timer = setTimeout(() => {
       loadTranscription();
-    }, 1000);
+    }, 4000); // Increased delay to wait for startup-fill
 
-    // Listen for transcription-filled event to reload
+    // Listen for transcription-filled event to reload immediately
     const handleTranscriptionsFilled = () => {
+      console.log(`[Chart ${chartId}] Transcriptions filled event received, reloading...`);
       setTimeout(() => {
         loadTranscription();
-      }, 500);
+      }, 1000);
     };
     
     window.addEventListener('transcriptions-filled', handleTranscriptionsFilled);
@@ -164,10 +184,22 @@ const ReportsPage = () => {
               const chart = report.charts[i];
               const chartId = chart.id || `chart-${i}`;
               
-              // Find the chart element
-              const chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
+              console.log(`[Reports] Looking for chart element: [data-chart-id="${chartId}"]`);
+              
+              // Find the chart element - try multiple selectors
+              let chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
+              
+              // Fallback: try to find by index
+              if (!chartElement) {
+                const allChartCards = document.querySelectorAll('[data-chart-id]');
+                if (allChartCards[i]) {
+                  chartElement = allChartCards[i].querySelector('[data-chart-only="true"]');
+                }
+              }
+              
               if (chartElement) {
                 try {
+                  console.log(`[Reports] Capturing chart ${chartId}...`);
                   // Capture chart image
                   const canvas = await html2canvas(chartElement, {
                     backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
@@ -179,6 +211,8 @@ const ReportsPage = () => {
                   const imageUrl = canvas.toDataURL('image/png');
                   const topic = `${report.executiveSummary?.title || reportId} - ${chart.title}`;
                   
+                  console.log(`[Reports] Chart ${chartId} captured, image size: ${imageUrl.length} bytes`);
+                  
                   chartsForFill.push({
                     chartId,
                     topic,
@@ -186,8 +220,10 @@ const ReportsPage = () => {
                     imageUrl
                   });
                 } catch (err) {
-                  console.warn(`Failed to capture chart ${chartId} for transcription:`, err);
+                  console.error(`[Reports] Failed to capture chart ${chartId} for transcription:`, err);
                 }
+              } else {
+                console.warn(`[Reports] Chart element not found for ${chartId}`);
               }
             }
 
