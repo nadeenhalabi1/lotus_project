@@ -17,9 +17,19 @@ export const useDashboardData = () => {
       setError(null);
       setRefreshStatus(null);
       
-      // Check cache first
+      // Check persistent cache first (survives browser close)
+      const persistentCached = browserCache.getPersistentData('dashboard');
+      if (persistentCached && persistentCached.data?.charts?.length > 0) {
+        console.log('[Dashboard] Loading from persistent cache (last session)');
+        setData(persistentCached.data);
+        setLastUpdated(persistentCached.lastUpdated);
+        setLoading(false);
+        // Still fetch fresh data in background, but show cached data immediately
+      }
+      
+      // Check temporary cache (sessionStorage)
       const cached = browserCache.getTempData('dashboard');
-      if (cached && cached.data?.charts?.length > 0) {
+      if (cached && cached.data?.charts?.length > 0 && !persistentCached) {
         setData(cached.data);
         setLastUpdated(cached.lastUpdated);
         setLoading(false);
@@ -47,6 +57,12 @@ export const useDashboardData = () => {
             data: refreshedData,
             lastUpdated: refreshedUpdatedAt,
           }, 300000);
+          
+          // Also save to persistent cache
+          browserCache.setPersistentData('dashboard', {
+            data: refreshedData,
+            lastUpdated: refreshedUpdatedAt,
+          });
           return;
         } catch (refreshErr) {
           console.error('Auto-refresh error:', refreshErr);
@@ -57,11 +73,17 @@ export const useDashboardData = () => {
       setData(dashboardData);
       setLastUpdated(updatedAt);
       
-      // Cache for 5 minutes
+      // Cache for 5 minutes (temporary)
       browserCache.setTempData('dashboard', {
         data: dashboardData,
         lastUpdated: updatedAt,
       }, 300000);
+      
+      // Also save to persistent cache (survives browser close)
+      browserCache.setPersistentData('dashboard', {
+        data: dashboardData,
+        lastUpdated: updatedAt,
+      });
     } catch (err) {
       // Handle 429 errors with retry logic
       if (err.response?.status === 429) {
@@ -78,6 +100,12 @@ export const useDashboardData = () => {
             data: dashboardData,
             lastUpdated: updatedAt,
           }, 300000);
+          
+          // Also save to persistent cache
+          browserCache.setPersistentData('dashboard', {
+            data: dashboardData,
+            lastUpdated: updatedAt,
+          });
           return;
         } catch (retryErr) {
           setError('Too many requests. Please wait a moment and refresh.');
@@ -114,6 +142,12 @@ export const useDashboardData = () => {
         data: dashboardData,
         lastUpdated: updatedAt,
       }, 300000);
+      
+      // Also save to persistent cache (survives browser close)
+      browserCache.setPersistentData('dashboard', {
+        data: dashboardData,
+        lastUpdated: updatedAt,
+      });
 
       // After data refresh, refresh all chart transcriptions with OpenAI
       // Wait for charts to render first

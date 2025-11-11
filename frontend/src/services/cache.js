@@ -22,7 +22,7 @@ export const browserCache = {
     }
   },
 
-  // Temporary data cache (sessionStorage)
+  // Temporary data cache (sessionStorage for short-term, localStorage for persistent)
   setTempData: (key, value, ttl = 300000) => { // 5 minutes default
     try {
       const data = {
@@ -48,6 +48,32 @@ export const browserCache = {
       return data.value;
     } catch (error) {
       console.error('Error reading temp data:', error);
+      return null;
+    }
+  },
+
+  // Persistent data cache (localStorage - survives browser close)
+  setPersistentData: (key, value) => {
+    try {
+      const data = {
+        value,
+        savedAt: Date.now(),
+      };
+      localStorage.setItem(`${CACHE_PREFIX}persist_${key}`, JSON.stringify(data));
+    } catch (error) {
+      console.error('Error saving persistent data:', error);
+    }
+  },
+
+  getPersistentData: (key) => {
+    try {
+      const item = localStorage.getItem(`${CACHE_PREFIX}persist_${key}`);
+      if (!item) return null;
+
+      const data = JSON.parse(item);
+      return data.value;
+    } catch (error) {
+      console.error('Error reading persistent data:', error);
       return null;
     }
   },
