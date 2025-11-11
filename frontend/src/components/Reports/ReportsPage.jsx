@@ -22,41 +22,32 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
   useEffect(() => {
     const chartId = chart.id || `chart-${index}`;
     
-    // Only load once - if already loaded, don't load again
-    if (hasLoaded) {
+    if (!chartId) {
       return;
     }
     
-    // Load transcription from DB when chart is rendered (only once)
+    // Load transcription from DB - always reload when chart.id changes
+    // This ensures we always get the latest transcription from DB
     const loadTranscription = async () => {
-      if (!chartId) {
-        console.warn(`[Chart ${chartId}] No ID, skipping transcription load`);
-        return;
-      }
-
       try {
-        console.log(`[Chart ${chartId}] Loading transcription from DB (one time only)...`);
+        console.log(`[Reports Chart ${chartId}] Loading transcription directly from DB (GET /ai/chart-transcription/${chartId})...`);
         const narrationText = await getTranscription(chartId);
         
         if (narrationText) {
-          console.log(`[Chart ${chartId}] Transcription loaded:`, narrationText.substring(0, 50) + '...');
+          console.log(`[Reports Chart ${chartId}] ✅ Transcription loaded from DB:`, narrationText.substring(0, 50) + '...');
           // Notify parent component about the narration
           if (onNarrationReady) {
             onNarrationReady(chartId, narrationText);
           }
         } else {
-          console.log(`[Chart ${chartId}] No transcription found in DB`);
+          console.log(`[Reports Chart ${chartId}] ⚠️ No transcription found in DB`);
         }
-        
-        // Mark as loaded - no retries
-        setHasLoaded(true);
       } catch (error) {
-        console.error(`[Chart ${chartId}] Failed to load transcription:`, error);
-        // Mark as loaded even on error - don't retry
-        setHasLoaded(true);
+        console.error(`[Reports Chart ${chartId}] ❌ Failed to load transcription from DB:`, error);
       }
     };
 
+    // Always reload when chart.id changes (don't use hasLoaded to prevent reload)
     // Wait a bit for chart to render and startup-fill to potentially complete
     const timer = setTimeout(() => {
       loadTranscription();
@@ -65,7 +56,7 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
     return () => {
       clearTimeout(timer);
     };
-  }, [chart.id, index, getTranscription, onNarrationReady, hasLoaded]);
+  }, [chart.id, index, getTranscription, onNarrationReady]);
 
   return (
     <div 
