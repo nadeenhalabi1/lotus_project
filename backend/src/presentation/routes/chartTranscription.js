@@ -14,15 +14,19 @@ const router = Router();
 router.get('/chart-transcription/:chartId', async (req, res) => {
   try {
     const chartId = req.params.chartId;
+    console.log(`[GET /chart-transcription/${chartId}] Request received`);
+    
     const row = await getTranscriptionByChartId(chartId);
     
     if (!row) {
+      console.log(`[GET /chart-transcription/${chartId}] No transcription found (404)`);
       return res.status(404).json({ 
         ok: false, 
         error: 'No transcription' 
       });
     }
     
+    console.log(`[GET /chart-transcription/${chartId}] Transcription found, returning text`);
     res.json({ 
       ok: true, 
       data: { 
@@ -32,7 +36,7 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
       } 
     });
   } catch (err) {
-    console.error('Get transcription error:', err);
+    console.error(`[GET /chart-transcription/${req.params.chartId}] Error:`, err.message, err.stack);
     res.status(500).json({ 
       ok: false, 
       error: err?.message || 'DB error' 

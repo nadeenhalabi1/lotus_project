@@ -14,7 +14,9 @@ export const supabase = SUPABASE_URL && SUPABASE_KEY
 
 function getSupabaseClient() {
   if (!supabase) {
-    throw new Error('Supabase client not available - check SUPABASE_URL and SUPABASE_KEY');
+    const error = new Error('Supabase client not available - check SUPABASE_URL and SUPABASE_KEY');
+    console.error('[ChartTranscriptionsRepository]', error.message);
+    throw error;
   }
   return supabase;
 }
@@ -69,19 +71,25 @@ export async function saveTranscription(chartId, signature, model, text) {
  * Get by chart_id only (no signature)
  */
 export async function getTranscriptionByChartId(chartId) {
-  const client = getSupabaseClient();
-  
-  const { data, error } = await client
-    .from('ai_chart_transcriptions')
-    .select('chart_id, chart_signature, transcription_text, updated_at')
-    .eq('chart_id', chartId)
-    .maybeSingle();
+  try {
+    const client = getSupabaseClient();
     
-  if (error) {
-    throw new Error(error.message);
+    const { data, error } = await client
+      .from('ai_chart_transcriptions')
+      .select('chart_id, chart_signature, transcription_text, updated_at')
+      .eq('chart_id', chartId)
+      .maybeSingle();
+      
+    if (error) {
+      console.error(`[getTranscriptionByChartId] Supabase error for ${chartId}:`, error);
+      throw new Error(`Database error: ${error.message}`);
+    }
+    
+    return data || null;
+  } catch (err) {
+    console.error(`[getTranscriptionByChartId] Error for ${chartId}:`, err.message);
+    throw err;
   }
-  
-  return data || null;
 }
 
 /**
