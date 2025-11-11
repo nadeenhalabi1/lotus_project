@@ -1,16 +1,14 @@
-// ESM module — no CommonJS exports
+// ESM, no CommonJS
 import { createClient } from '@supabase/supabase-js';
 
-// Read env only (do NOT hardcode)
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.warn('[ChartTranscriptionsRepository] Missing SUPABASE_URL / SUPABASE_KEY');
+  console.warn('[ChartTranscriptionsRepository] Missing SUPABASE_URL / SUPABASE_KEY envs');
 }
 
-// Create Supabase client
-const supabase = SUPABASE_URL && SUPABASE_KEY 
+export const supabase = SUPABASE_URL && SUPABASE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_KEY)
   : null;
 
@@ -22,9 +20,53 @@ function getSupabaseClient() {
 }
 
 /**
- * Get transcription by chart ID (DB-first flow)
- * @param {string} chartId - Unique chart identifier
- * @returns {Promise<Object|null>} Transcription row or null
+ * Compatibility: "cached" by chartId+signature (matches old import name)
+ * Returns transcription text or null
+ */
+export async function getCachedTranscription(chartId, signature) {
+  const client = getSupabaseClient();
+  
+  const { data, error } = await client
+    .from('ai_chart_transcriptions')
+    .select('transcription_text, chart_signature')
+    .eq('chart_id', chartId)
+    .eq('chart_signature', signature)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[getCachedTranscription] Supabase error:', error.message);
+    return null;
+  }
+  return data?.transcription_text ?? null;
+}
+
+/**
+ * Compatibility: "saveTranscription" upserts by chart_id (matches old import name)
+ */
+export async function saveTranscription(chartId, signature, model, text) {
+  const client = getSupabaseClient();
+  
+  const { error } = await client
+    .from('ai_chart_transcriptions')
+    .upsert({
+      chart_id: chartId,
+      chart_signature: signature,
+      model: model || 'gpt-4o',
+      transcription_text: text
+    }, { 
+      onConflict: 'chart_id' 
+    });
+
+  if (error) {
+    console.error('[saveTranscription] Supabase upsert error:', error.message);
+    throw new Error(error.message);
+  }
+}
+
+/* ---- Newer explicit APIs (also exported) ---- */
+
+/**
+ * Get by chart_id only (no signature)
  */
 export async function getTranscriptionByChartId(chartId) {
   const client = getSupabaseClient();
@@ -39,7 +81,7 @@ export async function getTranscriptionByChartId(chartId) {
     throw new Error(error.message);
   }
   
-  return data; // or null
+  return data || null;
 }
 
 /**

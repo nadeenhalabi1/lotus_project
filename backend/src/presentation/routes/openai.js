@@ -3,8 +3,10 @@ import chartNarrationService from '../../application/services/ChartNarrationServ
 import reportConclusionsService from '../../application/services/ReportConclusionsService.js';
 import { getCachedTranscription, saveTranscription } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
 import { computeChartSignature } from '../../utils/hash.js';
+import * as Repo from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
 
 console.debug('[AI] openai route loaded. Signature function OK.');
+console.debug('[BOOT] Repo keys ->', Object.keys(Repo));
 
 const router = Router();
 
@@ -124,7 +126,7 @@ router.post('/transcribe-chart', async (req, res) => {
       model
     });
 
-    // Save to cache
+    // Save to cache (compatibility function - accepts separate params)
     await saveTranscription(chartId, signature, model, text);
 
     return res.json({ 
