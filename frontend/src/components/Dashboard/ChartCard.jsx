@@ -4,53 +4,15 @@ import MultiSeriesBarChart from '../Charts/MultiSeriesBarChart';
 import MultiSeriesLineChart from '../Charts/MultiSeriesLineChart';
 import MultiSeriesAreaChart from '../Charts/MultiSeriesAreaChart';
 import { useTheme } from '../../context/ThemeContext';
-import { useChartNarration } from '../../hooks/useChartNarration';
-import { useEffect, useState } from 'react';
 
 const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
   const { theme } = useTheme();
-  const { loading, text, getTranscription } = useChartNarration();
-  const [hasLoaded, setHasLoaded] = useState(false);
   
   const colorScheme = chart.metadata?.colorScheme || {
     primary: '#10b981',
     secondary: '#34d399',
     gradient: ['#10b981', '#34d399', '#6ee7b7']
   };
-
-  // Load transcription from DB - reload when chart.id changes (e.g., after refresh)
-  useEffect(() => {
-    const chartId = chart.id;
-    
-    if (!chartId) {
-      return;
-    }
-    
-    const loadTranscription = async () => {
-      try {
-        console.log(`[ChartCard ${chartId}] Loading transcription from DB...`);
-        const narrationText = await getTranscription(chartId);
-        console.log(`[ChartCard ${chartId}] Transcription loaded from DB:`, narrationText ? 'Yes' : 'No');
-        // Reset hasLoaded when chart.id changes to allow reload
-        setHasLoaded(true);
-      } catch (error) {
-        console.error(`[ChartCard ${chartId}] Failed to load transcription:`, error);
-        setHasLoaded(true);
-      }
-    };
-
-    // Reset hasLoaded when chart.id changes
-    setHasLoaded(false);
-    
-    // Wait a bit for chart to render
-    const timer = setTimeout(() => {
-      loadTranscription();
-    }, 1000);
-
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [chart.id, getTranscription]);
   
   // Dynamic background based on theme
   const getBackgroundStyle = () => {
@@ -155,24 +117,6 @@ const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
           Last updated: <span className="text-gray-700 dark:text-gray-300">{formatDateTime(lastUpdated)}</span>
         </p>
       </div>
-      
-      {/* Chart Summary (AI-Generated) */}
-      {text && (
-        <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-          <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
-            Chart Summary (AI-Generated)
-          </h4>
-          {loading ? (
-            <p className="text-xs text-gray-500 dark:text-gray-400 italic">
-              Analyzing chart...
-            </p>
-          ) : (
-            <pre className="text-xs text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans leading-relaxed">
-              {text}
-            </pre>
-          )}
-        </div>
-      )}
     </div>
   );
 };
