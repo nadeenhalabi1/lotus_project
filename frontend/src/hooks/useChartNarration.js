@@ -17,17 +17,23 @@ export function useChartNarration() {
 
     setLoading(true);
     try {
+      console.log(`[useChartNarration] Fetching transcription from DB for ${chartId}...`);
       const res = await chartTranscriptionAPI.getTranscription(chartId);
       const transcriptionText = res.data.data?.text || null;
+      
+      // Always update text with what's in DB (even if null)
       setText(transcriptionText || '');
+      
+      console.log(`[useChartNarration] Transcription from DB for ${chartId}:`, transcriptionText ? `${transcriptionText.substring(0, 50)}...` : 'None');
       return transcriptionText;
     } catch (error) {
       if (error.response?.status === 404) {
-        // No transcription found - this is OK
+        // No transcription found - this is OK, clear text
+        console.log(`[useChartNarration] No transcription found in DB for ${chartId}`);
         setText('');
         return null;
       }
-      console.error('Get transcription error:', error);
+      console.error(`[useChartNarration] Error fetching transcription for ${chartId}:`, error);
       setText('');
       return null;
     } finally {

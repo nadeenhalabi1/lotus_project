@@ -18,17 +18,20 @@ const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
     gradient: ['#10b981', '#34d399', '#6ee7b7']
   };
 
-  // Load transcription from DB when chart is rendered (only once)
+  // Load transcription from DB - reload when chart.id changes (e.g., after refresh)
   useEffect(() => {
     const chartId = chart.id;
     
-    if (!chartId || hasLoaded) {
+    if (!chartId) {
       return;
     }
     
     const loadTranscription = async () => {
       try {
+        console.log(`[ChartCard ${chartId}] Loading transcription from DB...`);
         const narrationText = await getTranscription(chartId);
+        console.log(`[ChartCard ${chartId}] Transcription loaded from DB:`, narrationText ? 'Yes' : 'No');
+        // Reset hasLoaded when chart.id changes to allow reload
         setHasLoaded(true);
       } catch (error) {
         console.error(`[ChartCard ${chartId}] Failed to load transcription:`, error);
@@ -36,6 +39,9 @@ const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
       }
     };
 
+    // Reset hasLoaded when chart.id changes
+    setHasLoaded(false);
+    
     // Wait a bit for chart to render
     const timer = setTimeout(() => {
       loadTranscription();
@@ -44,7 +50,7 @@ const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
     return () => {
       clearTimeout(timer);
     };
-  }, [chart.id, getTranscription, hasLoaded]);
+  }, [chart.id, getTranscription]);
   
   // Dynamic background based on theme
   const getBackgroundStyle = () => {
