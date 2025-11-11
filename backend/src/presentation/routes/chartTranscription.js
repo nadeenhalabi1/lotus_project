@@ -12,9 +12,19 @@ const router = Router();
  * Render flow: Returns transcription from DB only (no OpenAI call)
  */
 router.get('/chart-transcription/:chartId', async (req, res) => {
+  const chartId = req.params.chartId;
   try {
-    const chartId = req.params.chartId;
     console.log(`[GET /chart-transcription/${chartId}] Request received`);
+    
+    // Check if Supabase is available
+    const { supabase } = await import('../../infrastructure/repositories/ChartTranscriptionsRepository.js');
+    if (!supabase) {
+      console.error(`[GET /chart-transcription/${chartId}] Supabase client not available`);
+      return res.status(503).json({ 
+        ok: false, 
+        error: 'Database service unavailable' 
+      });
+    }
     
     const row = await getTranscriptionByChartId(chartId);
     
@@ -36,10 +46,15 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
       } 
     });
   } catch (err) {
-    console.error(`[GET /chart-transcription/${req.params.chartId}] Error:`, err.message, err.stack);
+    console.error(`[GET /chart-transcription/${chartId}] Error:`, {
+      message: err.message,
+      stack: err.stack,
+      name: err.name
+    });
     res.status(500).json({ 
       ok: false, 
-      error: err?.message || 'DB error' 
+      error: err?.message || 'DB error',
+      details: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
   }
 });
