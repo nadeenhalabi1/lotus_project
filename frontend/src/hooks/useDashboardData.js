@@ -222,69 +222,99 @@ export const useDashboardData = () => {
             console.log(`[Dashboard Refresh] All dashboard chart transcriptions refreshed successfully`);
             
             // Also refresh transcriptions for report charts (if Reports page is active)
-            try {
-              console.log('[Dashboard Refresh] Checking for report charts to refresh...');
-              
-              // Find all report chart elements (they have data-chart-only="true" attribute)
-              const reportChartElements = document.querySelectorAll('[data-chart-id][data-chart-only="true"]');
-              
-              if (reportChartElements.length > 0) {
-                console.log(`[Dashboard Refresh] Found ${reportChartElements.length} report charts to refresh`);
+            // This ensures that when data is refreshed, report chart transcriptions are updated with new data
+            // Wait a bit longer to ensure report charts have updated with new data
+            setTimeout(async () => {
+              try {
+                console.log('[Dashboard Refresh] Checking for report charts to refresh...');
                 
-                // Get parent chart cards to extract chart IDs
-                const reportChartsToRefresh = [];
+                // Find all report chart elements (they have data-chart-only="true" attribute)
+                const reportChartElements = document.querySelectorAll('[data-chart-id][data-chart-only="true"]');
                 
-                reportChartElements.forEach((chartElement) => {
+                if (reportChartElements.length > 0) {
+                  console.log(`[Dashboard Refresh] Found ${reportChartElements.length} report charts to refresh`);
+                
+                // Prepare charts array for startup-fill (which handles signature check and OpenAI call)
+                // Capture all chart images first (these represent the NEW charts with NEW data)
+                const chartsForFill = [];
+                
+                for (const chartElement of reportChartElements) {
                   const chartCard = chartElement.closest('[data-chart-id]');
                   if (chartCard) {
                     const chartId = chartCard.getAttribute('data-chart-id');
                     if (chartId) {
-                      reportChartsToRefresh.push({
-                        chartId,
-                        element: chartElement
-                      });
+                      try {
+                        // Capture chart image (this represents the NEW chart with NEW data)
+                        const canvas = await html2canvas(chartElement, {
+                          backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
+                          scale: 1,
+                          logging: false,
+                          useCORS: true
+                        });
+                        
+                        const imageUrl = canvas.toDataURL('image/png');
+                        
+                        // Get chart title and report title for context
+                        const chartTitle = chartCard.querySelector('h4')?.textContent || chartId;
+                        const reportTitle = document.querySelector('h2')?.textContent || 'Report';
+                        const topic = `${reportTitle} - ${chartTitle}`;
+                        
+                        // Chart data will be computed by backend from the image
+                        // The signature will be computed from topic + chartData
+                        // If signature changed (new data), OpenAI will be called automatically
+                        const chartData = {}; // Empty - backend will compute from image
+                        
+                        chartsForFill.push({
+                          chartId,
+                          topic,
+                          chartData,
+                          imageUrl
+                        });
+                        
+                        console.log(`[Dashboard Refresh] Captured chart ${chartId} image (${imageUrl.length} bytes)`);
+                      } catch (err) {
+                        console.error(`[Dashboard Refresh] Failed to capture chart ${chartId}:`, err);
+                        // Continue with other charts even if one fails
+                      }
                     }
-                  }
-                });
-                
-                // Refresh transcriptions for report charts
-                for (const { chartId, element } of reportChartsToRefresh) {
-                  try {
-                    // Capture chart image
-                    const canvas = await html2canvas(element, {
-                      backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
-                      scale: 1,
-                      logging: false,
-                      useCORS: true
-                    });
-                    
-                    const imageUrl = canvas.toDataURL('image/png');
-                    
-                    // Try to get chart title from the card
-                    const chartCard = element.closest('[data-chart-id]');
-                    const chartTitle = chartCard?.querySelector('h4')?.textContent || chartId;
-                    const topic = `Report - ${chartTitle}`;
-                    
-                    // Refresh transcription via OpenAI (overwrites old one in DB)
-                    await chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, {});
-                    console.log(`[Dashboard Refresh] Report chart ${chartId} transcription refreshed`);
-                  } catch (err) {
-                    console.error(`[Dashboard Refresh] Failed to refresh transcription for report chart ${chartId}:`, err);
-                    // Continue with other charts even if one fails
                   }
                 }
                 
-                console.log(`[Dashboard Refresh] All report chart transcriptions refreshed successfully`);
+                // Filter out charts without imageUrl (shouldn't happen, but just in case)
+                const chartsWithImages = chartsForFill.filter(c => c.imageUrl);
                 
-                // Dispatch custom event to notify Reports page to reload transcriptions
-                window.dispatchEvent(new CustomEvent('reportTranscriptionsRefreshed'));
+                if (chartsWithImages.length > 0) {
+                  console.log(`[Dashboard Refresh] Refreshing ${chartsWithImages.length} report chart transcriptions with new data...`);
+                  
+                  // Refresh each chart transcription via OpenAI (always overwrites old one in DB)
+                  // This ensures that when data is refreshed, transcriptions are updated with new chart data
+                  for (const { chartId, topic, chartData, imageUrl } of chartsWithImages) {
+                    try {
+                      // Use refreshTranscription which always calls OpenAI and overwrites DB
+                      // This is what we want - new data = new transcription
+                      await chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, chartData);
+                      console.log(`[Dashboard Refresh] Report chart ${chartId} transcription refreshed with new data`);
+                    } catch (err) {
+                      console.error(`[Dashboard Refresh] Failed to refresh transcription for report chart ${chartId}:`, err);
+                      // Continue with other charts even if one fails
+                    }
+                  }
+                  
+                  console.log(`[Dashboard Refresh] All report chart transcriptions refreshed successfully`);
+                  
+                  // Dispatch custom event to notify Reports page to reload transcriptions
+                  window.dispatchEvent(new CustomEvent('reportTranscriptionsRefreshed'));
+                } else {
+                  console.warn('[Dashboard Refresh] No report charts with images captured');
+                }
               } else {
                 console.log('[Dashboard Refresh] No report charts found to refresh');
               }
-            } catch (err) {
-              console.error('[Dashboard Refresh] Failed to refresh report chart transcriptions:', err);
-              // Don't fail the whole refresh if report transcription refresh fails
-            }
+              } catch (err) {
+                console.error('[Dashboard Refresh] Failed to refresh report chart transcriptions:', err);
+                // Don't fail the whole refresh if report transcription refresh fails
+              }
+            }, 5000); // Wait 5 seconds to ensure report charts have updated with new data
           } catch (err) {
             console.error('[Dashboard Refresh] Failed to refresh chart transcriptions:', err);
             // Don't fail the whole refresh if transcription refresh fails
