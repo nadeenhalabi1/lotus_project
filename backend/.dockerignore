@@ -1,5 +1,11 @@
 node_modules
 npm-debug.log
+.git
+.gitignore
+.DS_Store
+
+node_modules
+npm-debug.log
 .yarn
 .pnpm
 .DS_Store

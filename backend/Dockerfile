@@ -9,7 +9,8 @@ ENV NPM_CONFIG_CACHE=/tmp/.npm
 
 # מתקינים רק לפי package*.json (מנצל cache טוב)
 COPY package*.json ./
-RUN npm ci --omit=dev
+# שימוש ב-npm install כדי להימנע מתלות ב-lockfile לא מסונכרן
+RUN npm install --omit=dev
 
 # עכשיו מעתיקים את שאר הקוד
 COPY . .
