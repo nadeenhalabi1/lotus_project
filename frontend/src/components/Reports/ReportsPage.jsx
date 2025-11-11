@@ -17,19 +17,25 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
   const chartCardRef = useRef(null); // Ref for the entire card
   const chartOnlyRef = useRef(null); // Ref for chart area only (without narration)
   const { loading, text, getTranscription } = useChartNarration();
+  const [hasLoaded, setHasLoaded] = useState(false); // Track if we already loaded
 
   useEffect(() => {
     const chartId = chart.id || `chart-${index}`;
     
-    // Load transcription from DB when chart is rendered
-    const loadTranscription = async (retryCount = 0) => {
+    // Only load once - if already loaded, don't load again
+    if (hasLoaded) {
+      return;
+    }
+    
+    // Load transcription from DB when chart is rendered (only once)
+    const loadTranscription = async () => {
       if (!chartId) {
         console.warn(`[Chart ${chartId}] No ID, skipping transcription load`);
         return;
       }
 
       try {
-        console.log(`[Chart ${chartId}] Loading transcription from DB...`);
+        console.log(`[Chart ${chartId}] Loading transcription from DB (one time only)...`);
         const narrationText = await getTranscription(chartId);
         
         if (narrationText) {
@@ -40,45 +46,26 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           }
         } else {
           console.log(`[Chart ${chartId}] No transcription found in DB`);
-          // Retry after a delay if transcription not found (might still be generating)
-          if (retryCount < 3) {
-            console.log(`[Chart ${chartId}] Retrying in 3 seconds... (attempt ${retryCount + 1}/3)`);
-            setTimeout(() => {
-              loadTranscription(retryCount + 1);
-            }, 3000);
-          }
         }
+        
+        // Mark as loaded - no retries
+        setHasLoaded(true);
       } catch (error) {
         console.error(`[Chart ${chartId}] Failed to load transcription:`, error);
-        // Retry on error
-        if (retryCount < 2) {
-          setTimeout(() => {
-            loadTranscription(retryCount + 1);
-          }, 2000);
-        }
+        // Mark as loaded even on error - don't retry
+        setHasLoaded(true);
       }
     };
 
     // Wait a bit for chart to render and startup-fill to potentially complete
     const timer = setTimeout(() => {
       loadTranscription();
-    }, 4000); // Increased delay to wait for startup-fill
-
-    // Listen for transcription-filled event to reload immediately
-    const handleTranscriptionsFilled = () => {
-      console.log(`[Chart ${chartId}] Transcriptions filled event received, reloading...`);
-      setTimeout(() => {
-        loadTranscription();
-      }, 1000);
-    };
-    
-    window.addEventListener('transcriptions-filled', handleTranscriptionsFilled);
+    }, 2000); // Wait 2 seconds for startup-fill to complete
 
     return () => {
       clearTimeout(timer);
-      window.removeEventListener('transcriptions-filled', handleTranscriptionsFilled);
     };
-  }, [chart, getTranscription, onNarrationReady, index]);
+  }, [chart.id, index, getTranscription, onNarrationReady, hasLoaded]);
 
   return (
     <div 
@@ -171,80 +158,75 @@ const ReportsPage = () => {
       setReportData(report);
       setSelectedReport(reportId);
 
-      // After report is generated, wait for charts to render and then fill transcriptions
-      setTimeout(async () => {
-        if (report.charts && report.charts.length > 0) {
-          try {
-            // Wait for charts to render
-            await new Promise(resolve => setTimeout(resolve, 2000));
+          // After report is generated, wait for charts to render and then fill transcriptions (only once)
+          setTimeout(async () => {
+            if (report.charts && report.charts.length > 0) {
+              try {
+                // Wait for charts to render
+                await new Promise(resolve => setTimeout(resolve, 1500));
 
-            // Prepare charts array for startup-fill
-            const chartsForFill = [];
-            for (let i = 0; i < report.charts.length; i++) {
-              const chart = report.charts[i];
-              const chartId = chart.id || `chart-${i}`;
-              
-              console.log(`[Reports] Looking for chart element: [data-chart-id="${chartId}"]`);
-              
-              // Find the chart element - try multiple selectors
-              let chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
-              
-              // Fallback: try to find by index
-              if (!chartElement) {
-                const allChartCards = document.querySelectorAll('[data-chart-id]');
-                if (allChartCards[i]) {
-                  chartElement = allChartCards[i].querySelector('[data-chart-only="true"]');
+                // Prepare charts array for startup-fill
+                const chartsForFill = [];
+                for (let i = 0; i < report.charts.length; i++) {
+                  const chart = report.charts[i];
+                  const chartId = chart.id || `chart-${i}`;
+                  
+                  console.log(`[Reports] Looking for chart element: [data-chart-id="${chartId}"]`);
+                  
+                  // Find the chart element - try multiple selectors
+                  let chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
+                  
+                  // Fallback: try to find by index
+                  if (!chartElement) {
+                    const allChartCards = document.querySelectorAll('[data-chart-id]');
+                    if (allChartCards[i]) {
+                      chartElement = allChartCards[i].querySelector('[data-chart-only="true"]');
+                    }
+                  }
+                  
+                  if (chartElement) {
+                    try {
+                      console.log(`[Reports] Capturing chart ${chartId}...`);
+                      // Capture chart image
+                      const canvas = await html2canvas(chartElement, {
+                        backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
+                        scale: 1,
+                        logging: false,
+                        useCORS: true
+                      });
+                      
+                      const imageUrl = canvas.toDataURL('image/png');
+                      const topic = `${report.executiveSummary?.title || reportId} - ${chart.title}`;
+                      
+                      console.log(`[Reports] Chart ${chartId} captured, image size: ${imageUrl.length} bytes`);
+                      
+                      chartsForFill.push({
+                        chartId,
+                        topic,
+                        chartData: chart.data || {},
+                        imageUrl
+                      });
+                    } catch (err) {
+                      console.error(`[Reports] Failed to capture chart ${chartId} for transcription:`, err);
+                    }
+                  } else {
+                    console.warn(`[Reports] Chart element not found for ${chartId}`);
+                  }
                 }
-              }
-              
-              if (chartElement) {
-                try {
-                  console.log(`[Reports] Capturing chart ${chartId}...`);
-                  // Capture chart image
-                  const canvas = await html2canvas(chartElement, {
-                    backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
-                    scale: 1,
-                    logging: false,
-                    useCORS: true
-                  });
+
+                // Call startup-fill API (only once per report generation)
+                if (chartsForFill.length > 0) {
+                  console.log(`[Reports] Filling transcriptions for ${chartsForFill.length} charts (one time only)...`);
+                  const results = await startupFill(chartsForFill);
+                  console.log('[Reports] Transcriptions filled successfully', results);
                   
-                  const imageUrl = canvas.toDataURL('image/png');
-                  const topic = `${report.executiveSummary?.title || reportId} - ${chart.title}`;
-                  
-                  console.log(`[Reports] Chart ${chartId} captured, image size: ${imageUrl.length} bytes`);
-                  
-                  chartsForFill.push({
-                    chartId,
-                    topic,
-                    chartData: chart.data || {},
-                    imageUrl
-                  });
-                } catch (err) {
-                  console.error(`[Reports] Failed to capture chart ${chartId} for transcription:`, err);
+                  // No need to trigger event - charts will load automatically after 2 seconds
                 }
-              } else {
-                console.warn(`[Reports] Chart element not found for ${chartId}`);
+              } catch (err) {
+                console.error('[Reports] Failed to fill transcriptions:', err);
               }
             }
-
-            // Call startup-fill API
-            if (chartsForFill.length > 0) {
-              console.log(`[Reports] Filling transcriptions for ${chartsForFill.length} charts...`);
-              const results = await startupFill(chartsForFill);
-              console.log('[Reports] Transcriptions filled successfully', results);
-              
-              // After filling, trigger a re-render of chart components to load transcriptions
-              // Force update by toggling a state or re-rendering
-              setTimeout(() => {
-                // Charts will automatically reload transcriptions via their useEffect
-                window.dispatchEvent(new Event('transcriptions-filled'));
-              }, 500);
-            }
-          } catch (err) {
-            console.error('[Reports] Failed to fill transcriptions:', err);
-          }
-        }
-      }, 100);
+          }, 100);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to generate report');
     } finally {
