@@ -10,51 +10,56 @@ import { Download } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import html2canvas from 'html2canvas';
 import { useChartNarration } from '../../hooks/useChartNarration';
+import { chartTranscriptionAPI } from '../../services/api';
 
 // Component for chart with narration
 const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarrationReady }) => {
   const chartCardRef = useRef(null); // Ref for the entire card
   const chartOnlyRef = useRef(null); // Ref for chart area only (without narration)
-  const { loading, text, narrateFromCanvas } = useChartNarration();
-  const [narrationGenerated, setNarrationGenerated] = useState(false);
+  const { loading, text, getTranscription } = useChartNarration();
+  const [narrationLoaded, setNarrationLoaded] = useState(false);
 
   useEffect(() => {
-    // Generate narration when chart is rendered
-    const generateNarration = async () => {
-      if (!chartOnlyRef.current || narrationGenerated) return;
+    const chartId = chart.id || `chart-${index}`;
+    
+    // Load transcription from DB when chart is rendered
+    const loadTranscription = async () => {
+      if (!chartId) {
+        console.warn('Chart has no ID, skipping transcription load');
+        return;
+      }
 
       try {
-        // Wait a bit for chart to fully render
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Find the SVG element inside the chart container
-        const svgElement = chartOnlyRef.current.querySelector('svg');
-        if (!svgElement) return;
-
-        // Convert only the chart area to canvas (without narration)
-        const canvas = await html2canvas(chartOnlyRef.current, {
-          backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
-          scale: 1,
-          logging: false,
-          useCORS: true
-        });
-
-        // Generate narration
-        const context = `${reportTitle} - ${chart.title}`;
-        const narrationText = await narrateFromCanvas(canvas, context);
-        setNarrationGenerated(true);
+        const narrationText = await getTranscription(chartId);
         
         // Notify parent component about the narration
         if (onNarrationReady && narrationText) {
-          onNarrationReady(chart.id || index, narrationText);
+          onNarrationReady(chartId, narrationText);
         }
       } catch (error) {
-        console.error('Failed to generate chart narration:', error);
+        console.error('Failed to load chart transcription:', error);
       }
     };
 
-    generateNarration();
-  }, [chart, narrateFromCanvas, reportTitle, narrationGenerated, onNarrationReady, index]);
+    // Wait a bit for chart to render before loading transcription
+    const timer = setTimeout(() => {
+      loadTranscription();
+    }, 1000);
+
+    // Listen for transcription-filled event to reload
+    const handleTranscriptionsFilled = () => {
+      setTimeout(() => {
+        loadTranscription();
+      }, 500);
+    };
+    
+    window.addEventListener('transcriptions-filled', handleTranscriptionsFilled);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('transcriptions-filled', handleTranscriptionsFilled);
+    };
+  }, [chart, getTranscription, onNarrationReady, index]);
 
   return (
     <div 
@@ -131,6 +136,7 @@ const ReportsPage = () => {
   const [chartNarrations, setChartNarrations] = useState({});
   const [reportConclusions, setReportConclusions] = useState(null);
   const [loadingConclusions, setLoadingConclusions] = useState(false);
+  const { startupFill } = useChartNarration();
 
   const handleGenerate = async (reportId) => {
     try {
@@ -138,11 +144,72 @@ const ReportsPage = () => {
       setError(null);
       setReportData(null);
       setReportConclusions(null);
+      setChartNarrations({});
 
       // Generate report as JSON (to display on page)
       const response = await reportsAPI.generateReport(reportId, { format: 'json' });
-      setReportData(response.data.report);
+      const report = response.data.report;
+      setReportData(report);
       setSelectedReport(reportId);
+
+      // After report is generated, wait for charts to render and then fill transcriptions
+      setTimeout(async () => {
+        if (report.charts && report.charts.length > 0) {
+          try {
+            // Wait for charts to render
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            // Prepare charts array for startup-fill
+            const chartsForFill = [];
+            for (let i = 0; i < report.charts.length; i++) {
+              const chart = report.charts[i];
+              const chartId = chart.id || `chart-${i}`;
+              
+              // Find the chart element
+              const chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
+              if (chartElement) {
+                try {
+                  // Capture chart image
+                  const canvas = await html2canvas(chartElement, {
+                    backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
+                    scale: 1,
+                    logging: false,
+                    useCORS: true
+                  });
+                  
+                  const imageUrl = canvas.toDataURL('image/png');
+                  const topic = `${report.executiveSummary?.title || reportId} - ${chart.title}`;
+                  
+                  chartsForFill.push({
+                    chartId,
+                    topic,
+                    chartData: chart.data || {},
+                    imageUrl
+                  });
+                } catch (err) {
+                  console.warn(`Failed to capture chart ${chartId} for transcription:`, err);
+                }
+              }
+            }
+
+            // Call startup-fill API
+            if (chartsForFill.length > 0) {
+              console.log(`[Reports] Filling transcriptions for ${chartsForFill.length} charts...`);
+              const results = await startupFill(chartsForFill);
+              console.log('[Reports] Transcriptions filled successfully', results);
+              
+              // After filling, trigger a re-render of chart components to load transcriptions
+              // Force update by toggling a state or re-rendering
+              setTimeout(() => {
+                // Charts will automatically reload transcriptions via their useEffect
+                window.dispatchEvent(new Event('transcriptions-filled'));
+              }, 500);
+            }
+          } catch (err) {
+            console.error('[Reports] Failed to fill transcriptions:', err);
+          }
+        }
+      }, 100);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to generate report');
     } finally {
