@@ -1,20 +1,20 @@
-import * as repo from '../src/infrastructure/repositories/ChartTranscriptionsRepository.js';
+import * as Repo from '../src/infrastructure/repositories/ChartTranscriptionsRepository.js';
 
-console.log('Repo exports:', Object.keys(repo));
+console.log('Repo exports:', Object.keys(Repo));
 
-// Sanity checks - compatibility exports
-if (typeof repo.getCachedTranscription !== 'function') {
+// Required exports (used by routes)
+if (typeof Repo.getCachedTranscription !== 'function') {
   throw new Error('Missing getCachedTranscription');
 }
-if (typeof repo.saveTranscription !== 'function') {
+if (typeof Repo.saveTranscription !== 'function') {
   throw new Error('Missing saveTranscription');
 }
 
-// Newer explicit APIs
-if (typeof repo.getTranscriptionByChartId !== 'function') {
+// Compat exports (newer APIs)
+if (typeof Repo.getTranscriptionByChartId !== 'function') {
   throw new Error('Missing getTranscriptionByChartId');
 }
-if (typeof repo.upsertTranscription !== 'function') {
+if (typeof Repo.upsertTranscription !== 'function') {
   throw new Error('Missing upsertTranscription');
 }
 
