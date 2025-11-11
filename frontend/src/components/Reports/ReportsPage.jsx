@@ -16,8 +16,10 @@ import { chartTranscriptionAPI } from '../../services/api';
 const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarrationReady }) => {
   const chartCardRef = useRef(null); // Ref for the entire card
   const chartOnlyRef = useRef(null); // Ref for chart area only (without narration)
-  const { loading, text, getTranscription } = useChartNarration();
-  const [hasLoaded, setHasLoaded] = useState(false); // Track if we already loaded
+  const [transcriptionText, setTranscriptionText] = useState(''); // Local state to keep transcription stable
+  const [loading, setLoading] = useState(false);
+  const { getTranscription } = useChartNarration();
+  const loadedChartIdRef = useRef(null); // Track which chart we loaded
 
   useEffect(() => {
     const chartId = chart.id || `chart-${index}`;
@@ -26,28 +28,49 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
       return;
     }
     
-    // Load transcription from DB - always reload when chart.id changes
-    // This ensures we always get the latest transcription from DB
+    // Only load if this is a different chart (prevent re-loading same chart)
+    if (loadedChartIdRef.current === chartId && transcriptionText) {
+      return;
+    }
+    
+    // Load transcription from DB - only once per chart
     const loadTranscription = async () => {
       try {
+        setLoading(true);
         console.log(`[Reports Chart ${chartId}] Loading transcription directly from DB (GET /ai/chart-transcription/${chartId})...`);
+        
         const narrationText = await getTranscription(chartId);
         
+        // Set transcription text in local state (keeps it stable)
         if (narrationText) {
           console.log(`[Reports Chart ${chartId}] ✅ Transcription loaded from DB:`, narrationText.substring(0, 50) + '...');
+          setTranscriptionText(narrationText); // Store in local state
+          loadedChartIdRef.current = chartId; // Mark as loaded
+          
           // Notify parent component about the narration
           if (onNarrationReady) {
             onNarrationReady(chartId, narrationText);
           }
         } else {
           console.log(`[Reports Chart ${chartId}] ⚠️ No transcription found in DB`);
+          setTranscriptionText(''); // Clear if not found
+          loadedChartIdRef.current = chartId; // Mark as loaded even if empty
         }
       } catch (error) {
         console.error(`[Reports Chart ${chartId}] ❌ Failed to load transcription from DB:`, error);
+        setTranscriptionText(''); // Clear on error
+        loadedChartIdRef.current = chartId; // Mark as loaded even on error
+      } finally {
+        setLoading(false);
       }
     };
 
-    // Always reload when chart.id changes (don't use hasLoaded to prevent reload)
+    // Reset if chart.id changed
+    if (loadedChartIdRef.current !== chartId) {
+      setTranscriptionText(''); // Clear previous transcription
+      loadedChartIdRef.current = null;
+    }
+    
     // Wait a bit for chart to render and startup-fill to potentially complete
     const timer = setTimeout(() => {
       loadTranscription();
@@ -56,7 +79,7 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
     return () => {
       clearTimeout(timer);
     };
-  }, [chart.id, index, getTranscription, onNarrationReady]);
+  }, [chart.id, index, getTranscription, onNarrationReady, transcriptionText]);
 
   return (
     <div 
@@ -94,9 +117,9 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           <p className="text-sm text-gray-500 dark:text-gray-400 italic">
             Analyzing chart...
           </p>
-        ) : text ? (
+        ) : transcriptionText ? (
           <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans">
-            {text}
+            {transcriptionText}
           </pre>
         ) : (
           <p className="text-sm text-gray-500 dark:text-gray-400 italic">
