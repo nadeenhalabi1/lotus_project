@@ -62,6 +62,7 @@ const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
   return (
     <div
       className="card cursor-pointer hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 border-2 border-transparent hover:border-opacity-50"
+      data-chart-id={chart.id}
       style={{
         borderColor: `${colorScheme.primary}40`,
         ...getBackgroundStyle(),

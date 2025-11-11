@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { dashboardAPI } from '../services/api';
+import { dashboardAPI, chartTranscriptionAPI } from '../services/api';
 import { browserCache } from '../services/cache';
+import html2canvas from 'html2canvas';
 
 export const useDashboardData = () => {
   const [data, setData] = useState(null);
@@ -113,6 +114,70 @@ export const useDashboardData = () => {
         data: dashboardData,
         lastUpdated: updatedAt,
       }, 300000);
+
+      // After data refresh, refresh all chart transcriptions with OpenAI
+      // Wait for charts to render first
+      setTimeout(async () => {
+        if (dashboardData.charts && dashboardData.charts.length > 0) {
+          try {
+            console.log(`[Dashboard Refresh] Refreshing transcriptions for ${dashboardData.charts.length} charts...`);
+            
+            // Refresh transcriptions for all charts
+            for (let i = 0; i < dashboardData.charts.length; i++) {
+              const chart = dashboardData.charts[i];
+              const chartId = chart.id || `chart-${i}`;
+              
+              try {
+                // Find the chart element - try multiple selectors
+                let chartElement = document.querySelector(`[data-chart-id="${chartId}"] .recharts-wrapper`);
+                
+                // Fallback: try to find by chart card
+                if (!chartElement) {
+                  const chartCard = document.querySelector(`[data-chart-id="${chartId}"]`);
+                  if (chartCard) {
+                    chartElement = chartCard.querySelector('.recharts-wrapper');
+                  }
+                }
+                
+                // Fallback: try to find by index
+                if (!chartElement) {
+                  const allChartCards = document.querySelectorAll('[data-chart-id]');
+                  if (allChartCards[i]) {
+                    chartElement = allChartCards[i].querySelector('.recharts-wrapper');
+                  }
+                }
+                
+                if (chartElement) {
+                  // Capture chart image
+                  const canvas = await html2canvas(chartElement, {
+                    backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
+                    scale: 1,
+                    logging: false,
+                    useCORS: true
+                  });
+                  
+                  const imageUrl = canvas.toDataURL('image/png');
+                  const topic = `${chart.title || chartId}`;
+                  
+                  // Refresh transcription via OpenAI (overwrites old one in DB)
+                  await chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, chart.data || {});
+                  console.log(`[Dashboard Refresh] Chart ${chartId} transcription refreshed`);
+                } else {
+                  console.warn(`[Dashboard Refresh] Chart element not found for ${chartId}, skipping transcription refresh`);
+                }
+              } catch (err) {
+                console.error(`[Dashboard Refresh] Failed to refresh transcription for ${chartId}:`, err);
+                // Continue with other charts even if one fails
+              }
+            }
+            
+            console.log(`[Dashboard Refresh] All chart transcriptions refreshed successfully`);
+          } catch (err) {
+            console.error('[Dashboard Refresh] Failed to refresh chart transcriptions:', err);
+            // Don't fail the whole refresh if transcription refresh fails
+          }
+        }
+      }, 2000); // Wait 2 seconds for charts to render
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to refresh data');
       setRefreshStatus({
