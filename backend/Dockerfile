@@ -11,10 +11,6 @@ ENV NPM_CONFIG_CACHE=/tmp/.npm
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# מעתיקים את תיקיית DB (אם קיימת) - נדרש למיגרציה
-# ב-Railway, תיקיית DB תועתק לתוך backend לפני ה-build
-COPY DB ./DB
-
 # עכשיו מעתיקים את שאר הקוד
 COPY . .
 
