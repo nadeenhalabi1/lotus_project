@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { reportsAPI, openaiAPI } from '../../services/api';
+import { reportsAPI, openaiAPI, chartTranscriptionAPI } from '../../services/api';
 import LoadingSpinner from '../Common/LoadingSpinner';
 import ErrorMessage from '../Common/ErrorMessage';
 import { BarChart, LineChart, PieChart, AreaChart } from '../Charts';
@@ -9,16 +9,13 @@ import MultiSeriesAreaChart from '../Charts/MultiSeriesAreaChart';
 import { Download } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import html2canvas from 'html2canvas';
-import { useChartNarration } from '../../hooks/useChartNarration';
-import { chartTranscriptionAPI } from '../../services/api';
 
 // Component for chart with narration
 const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarrationReady }) => {
   const chartCardRef = useRef(null); // Ref for the entire card
   const chartOnlyRef = useRef(null); // Ref for chart area only (without narration)
-  const [transcriptionText, setTranscriptionText] = useState(''); // Local state to keep transcription stable
+  const [transcriptionText, setTranscriptionText] = useState(''); // Local state - always synced with DB
   const [loading, setLoading] = useState(false);
-  const { getTranscription } = useChartNarration();
   const loadedChartIdRef = useRef(null); // Track which chart we loaded
 
   useEffect(() => {
@@ -28,38 +25,39 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
       return;
     }
     
-    // Only load if this is a different chart (prevent re-loading same chart)
-    if (loadedChartIdRef.current === chartId && transcriptionText) {
-      return;
-    }
-    
-    // Load transcription from DB - only once per chart
-    const loadTranscription = async () => {
+    // Always load transcription directly from DB (no cache, no hook state)
+    const loadTranscriptionFromDB = async () => {
       try {
         setLoading(true);
-        console.log(`[Reports Chart ${chartId}] Loading transcription directly from DB (GET /ai/chart-transcription/${chartId})...`);
+        console.log(`[Reports Chart ${chartId}] 🔄 Fetching transcription directly from DB (GET /ai/chart-transcription/${chartId})...`);
         
-        const narrationText = await getTranscription(chartId);
+        // Call API directly - always fetch from DB, no cache
+        const res = await chartTranscriptionAPI.getTranscription(chartId);
+        const dbTranscriptionText = res.data.data?.text || null;
         
-        // Set transcription text in local state (keeps it stable)
-        if (narrationText) {
-          console.log(`[Reports Chart ${chartId}] ✅ Transcription loaded from DB:`, narrationText.substring(0, 50) + '...');
-          setTranscriptionText(narrationText); // Store in local state
-          loadedChartIdRef.current = chartId; // Mark as loaded
-          
-          // Notify parent component about the narration
+        // Always set what's in DB (even if null) - this ensures sync with DB
+        setTranscriptionText(dbTranscriptionText || '');
+        loadedChartIdRef.current = chartId;
+        
+        if (dbTranscriptionText) {
+          console.log(`[Reports Chart ${chartId}] ✅ Transcription from DB (transcription_text field):`, dbTranscriptionText.substring(0, 50) + '...');
+          // Notify parent component
           if (onNarrationReady) {
-            onNarrationReady(chartId, narrationText);
+            onNarrationReady(chartId, dbTranscriptionText);
           }
         } else {
-          console.log(`[Reports Chart ${chartId}] ⚠️ No transcription found in DB`);
-          setTranscriptionText(''); // Clear if not found
-          loadedChartIdRef.current = chartId; // Mark as loaded even if empty
+          console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text found in DB for this chart`);
         }
       } catch (error) {
-        console.error(`[Reports Chart ${chartId}] ❌ Failed to load transcription from DB:`, error);
-        setTranscriptionText(''); // Clear on error
-        loadedChartIdRef.current = chartId; // Mark as loaded even on error
+        if (error.response?.status === 404) {
+          // No transcription in DB - this is OK
+          console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text in DB (404)`);
+          setTranscriptionText(''); // Clear - sync with DB (no data)
+        } else {
+          console.error(`[Reports Chart ${chartId}] ❌ Error fetching transcription_text from DB:`, error);
+          setTranscriptionText(''); // Clear on error
+        }
+        loadedChartIdRef.current = chartId;
       } finally {
         setLoading(false);
       }
@@ -67,19 +65,19 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
 
     // Reset if chart.id changed
     if (loadedChartIdRef.current !== chartId) {
-      setTranscriptionText(''); // Clear previous transcription
+      setTranscriptionText(''); // Clear previous
       loadedChartIdRef.current = null;
     }
     
-    // Wait a bit for chart to render and startup-fill to potentially complete
+    // Wait a bit for chart to render, then load from DB
     const timer = setTimeout(() => {
-      loadTranscription();
-    }, 2000); // Wait 2 seconds for startup-fill to complete
+      loadTranscriptionFromDB();
+    }, 2000);
 
     return () => {
       clearTimeout(timer);
     };
-  }, [chart.id, index, getTranscription, onNarrationReady, transcriptionText]);
+  }, [chart.id, index, onNarrationReady]);
 
   return (
     <div 
@@ -156,7 +154,6 @@ const ReportsPage = () => {
   const [chartNarrations, setChartNarrations] = useState({});
   const [reportConclusions, setReportConclusions] = useState(null);
   const [loadingConclusions, setLoadingConclusions] = useState(false);
-  const { startupFill } = useChartNarration();
 
   const handleGenerate = async (reportId) => {
     try {
@@ -231,7 +228,7 @@ const ReportsPage = () => {
                 // Call startup-fill API (only once per report generation)
                 if (chartsForFill.length > 0) {
                   console.log(`[Reports] Filling transcriptions for ${chartsForFill.length} charts (one time only)...`);
-                  const results = await startupFill(chartsForFill);
+                  const results = await chartTranscriptionAPI.startupFill(chartsForFill);
                   console.log('[Reports] Transcriptions filled successfully', results);
                   
                   // No need to trigger event - charts will load automatically after 2 seconds
