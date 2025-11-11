@@ -17,19 +17,33 @@ export const useDashboardData = () => {
       setError(null);
       setRefreshStatus(null);
       
-      // Check persistent cache first (survives browser close)
+      // ALWAYS check persistent cache first (survives browser close)
+      // This ensures we show the last displayed data when reopening the site
       const persistentCached = browserCache.getPersistentData('dashboard');
       if (persistentCached && persistentCached.data?.charts?.length > 0) {
-        console.log('[Dashboard] Loading from persistent cache (last session)');
+        console.log('[Dashboard] ✅ Loading from persistent cache (last session data)');
         setData(persistentCached.data);
         setLastUpdated(persistentCached.lastUpdated);
         setLoading(false);
-        // Still fetch fresh data in background, but show cached data immediately
+        // Fetch fresh data in background to update cache, but don't block UI
+        dashboardAPI.getDashboard().then(response => {
+          const dashboardData = response.data;
+          const updatedAt = dashboardData.lastUpdated || new Date().toISOString();
+          // Update persistent cache with fresh data
+          browserCache.setPersistentData('dashboard', {
+            data: dashboardData,
+            lastUpdated: updatedAt,
+          });
+        }).catch(err => {
+          console.warn('[Dashboard] Background refresh failed, keeping cached data:', err);
+        });
+        return; // Exit early - we have cached data to show
       }
       
-      // Check temporary cache (sessionStorage)
+      // Check temporary cache (sessionStorage) as fallback
       const cached = browserCache.getTempData('dashboard');
-      if (cached && cached.data?.charts?.length > 0 && !persistentCached) {
+      if (cached && cached.data?.charts?.length > 0) {
+        console.log('[Dashboard] Loading from temporary cache');
         setData(cached.data);
         setLastUpdated(cached.lastUpdated);
         setLoading(false);
