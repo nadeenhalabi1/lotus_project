@@ -118,3 +118,29 @@ select cron.schedule(
   command := $$call public.purge_cache_older_than_60_days();$$
 );
 
+-- 7) AI Chart Transcriptions Cache
+create table if not exists public.ai_chart_transcriptions (
+  id bigserial primary key,
+  chart_id varchar(128) not null,
+  chart_signature varchar(64) not null,
+  model varchar(32) default 'gpt-4o',
+  transcription_text text not null,
+  created_at timestamptz default now(),
+  expires_at timestamptz default (now() + interval '60 days')
+);
+create index if not exists idx_ai_chart_id on public.ai_chart_transcriptions(chart_id);
+create index if not exists idx_ai_chart_sig on public.ai_chart_transcriptions(chart_signature);
+
+-- Extend purge function to include transcriptions
+create or replace function public.purge_cache_older_than_60_days()
+returns void language plpgsql as $$
+begin
+  delete from public.course_builder_cache          where snapshot_date < current_date - 60;
+  delete from public.assessments_cache             where snapshot_date < current_date - 60;
+  delete from public.content_studio_overview_cache where snapshot_date < current_date - 60;
+  delete from public.content_studio_contents_cache where snapshot_date < current_date - 60;
+  delete from public.learning_analytics_cache      where snapshot_date < current_date - 60;
+  delete from public.directory_cache               where snapshot_date < current_date - 60;
+  delete from public.ai_chart_transcriptions      where expires_at < now();
+end $$;
+

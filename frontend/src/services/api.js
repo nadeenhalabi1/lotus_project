@@ -124,6 +124,20 @@ export const openaiAPI = {
     
     return api.post('/openai/describe-chart', payload);
   },
+  transcribeChart: (chartId, image, topic, chartData, force = false) => {
+    // Optimized endpoint with Supabase caching
+    // Determine if it's a URL or data URL
+    const isUrl = image.startsWith('http://') || image.startsWith('https://');
+    const payload = {
+      chartId,
+      topic: topic || '',
+      chartData: chartData || {},
+      force,
+      ...(isUrl ? { imageUrl: image } : { dataUrl: image })
+    };
+    
+    return api.post('/openai/transcribe-chart', payload);
+  },
   generateReportConclusions: (topic, images) => {
     return api.post('/openai/report-conclusions', { topic, images });
   },

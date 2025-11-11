@@ -1,12 +1,15 @@
 import { Router } from 'express';
 import chartNarrationService from '../../application/services/ChartNarrationService.js';
 import reportConclusionsService from '../../application/services/ReportConclusionsService.js';
+import { getCachedTranscription, saveTranscription } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
+import { computeChartSignature } from '../../utils/hash.js';
 
 const router = Router();
 
 /**
  * POST /api/v1/openai/describe-chart
  * body: { imageUrl?: string, dataUrl?: string, context?: string, fast?: boolean }
+ * Legacy endpoint - still works but doesn't use caching
  */
 router.post('/describe-chart', async (req, res) => {
   try {
@@ -31,7 +34,7 @@ router.post('/describe-chart', async (req, res) => {
     if (dataUrl && !dataUrl.startsWith('data:image/')) {
       return res.status(400).json({ 
         ok: false, 
-        error: 'dataUrl must be a valid data URL (data:image/...)'
+        error: 'dataUrl must be a valid data URL (data:image/...)' 
       });
     }
 
@@ -44,6 +47,93 @@ router.post('/describe-chart', async (req, res) => {
   } catch (err) {
     console.error('describe-chart error:', err);
     res.status(500).json({ 
+      ok: false, 
+      error: err?.message || 'AI error' 
+    });
+  }
+});
+
+/**
+ * POST /api/v1/openai/transcribe-chart
+ * Optimized endpoint with Supabase caching
+ * body: {
+ *   chartId: string (required),
+ *   topic?: string,
+ *   chartData?: object,
+ *   imageUrl?: string,
+ *   dataUrl?: string,
+ *   force?: boolean
+ * }
+ */
+router.post('/transcribe-chart', async (req, res) => {
+  try {
+    const { chartId, topic, chartData, imageUrl, dataUrl, force } = req.body || {};
+    const image = imageUrl || dataUrl;
+    
+    if (!chartId || typeof chartId !== 'string') {
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'chartId (string) is required' 
+      });
+    }
+    
+    if (!image) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'imageUrl or dataUrl is required' 
+      });
+    }
+
+    // Validate image format
+    if (imageUrl && !imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'imageUrl must be a valid HTTP/HTTPS URL' 
+      });
+    }
+
+    if (dataUrl && !dataUrl.startsWith('data:image/')) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'dataUrl must be a valid data URL (data:image/...)' 
+      });
+    }
+
+    // Compute signature for caching
+    const signature = computeChartSignature(topic || '', chartData || {});
+    
+    // Check cache unless force=true
+    if (!force) {
+      const cached = await getCachedTranscription(chartId, signature);
+      if (cached) {
+        return res.json({ 
+          ok: true, 
+          source: 'cache', 
+          signature, 
+          text: cached 
+        });
+      }
+    }
+
+    // Generate new transcription via OpenAI
+    const model = 'gpt-4o';
+    const text = await chartNarrationService.describeChartImage(image, {
+      context: topic,
+      model
+    });
+
+    // Save to cache
+    await saveTranscription(chartId, signature, model, text);
+
+    return res.json({ 
+      ok: true, 
+      source: 'ai', 
+      signature, 
+      text 
+    });
+  } catch (err) {
+    console.error('Transcription error:', err);
+    return res.status(500).json({ 
       ok: false, 
       error: err?.message || 'AI error' 
     });
