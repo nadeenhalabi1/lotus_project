@@ -399,6 +399,11 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       });
     }
 
+    console.log(`[refresh] ========================================`);
+    console.log(`[refresh] Chart ${chartId} refresh request received`);
+    console.log(`[refresh] force=${force}, imageUrl length=${imageUrl?.length || 0}, topic=${topic || 'none'}`);
+    console.log(`[refresh] DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
+
     // If force=true, always generate new transcription (ignore signature check)
     // This is used when user explicitly clicks "Refresh Data" - we want new transcription for new data
     if (force) {
@@ -408,7 +413,6 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       console.log(`[refresh] Chart ${chartId} computed signature: ${signature.substring(0, 16)}...`);
       
       console.log(`[refresh] Chart ${chartId} 📞 Calling OpenAI to generate transcription...`);
-      console.log(`[refresh] Chart ${chartId} Image URL length: ${imageUrl?.length || 0}, Topic: ${topic || 'none'}`);
       console.log(`[refresh] Chart ${chartId} Image URL length: ${imageUrl?.length || 0}, Topic: ${topic || 'none'}`);
       const text = await transcribeChartImage({ imageUrl, context: topic });
       console.log(`[refresh] Chart ${chartId} ✅ OpenAI returned transcription (${text?.length || 0} chars)`);
