@@ -21,23 +21,34 @@ export const useDashboardData = () => {
       // ALWAYS check persistent cache first (survives browser close)
       // This ensures we show the last displayed data when reopening the site
       const persistentCached = browserCache.getPersistentData('dashboard');
+      let dashboardData;
+      let updatedAt;
+      
       if (persistentCached && persistentCached.data?.charts?.length > 0) {
         console.log('[Dashboard] ✅ Loading from persistent cache (last session data)');
         setData(persistentCached.data);
         setLastUpdated(persistentCached.lastUpdated);
         setLoading(false);
+        
+        // ⚠️ CRITICAL: Use cached data for startup-fill, but also fetch fresh data in background
+        dashboardData = persistentCached.data;
+        updatedAt = persistentCached.lastUpdated;
+        
         // Fetch fresh data in background to update cache, but don't block UI
         // Add delay to prevent rate limiting on page load
         setTimeout(async () => {
           try {
             const response = await dashboardAPI.getDashboard();
-            const dashboardData = response.data;
-            const updatedAt = dashboardData.lastUpdated || new Date().toISOString();
+            const freshData = response.data;
+            const freshUpdatedAt = freshData.lastUpdated || new Date().toISOString();
             // Update persistent cache with fresh data
             browserCache.setPersistentData('dashboard', {
-              data: dashboardData,
-              lastUpdated: updatedAt,
+              data: freshData,
+              lastUpdated: freshUpdatedAt,
             });
+            // Update state with fresh data if user is still on page
+            setData(freshData);
+            setLastUpdated(freshUpdatedAt);
           } catch (err) {
             // Handle 429 errors gracefully - don't spam console
             if (err.response?.status === 429) {
@@ -48,24 +59,33 @@ export const useDashboardData = () => {
             }
           }
         }, 5000); // Wait 5 seconds before background refresh to avoid rate limiting
-        return; // Exit early - we have cached data to show
+      } else {
+        // Check temporary cache (sessionStorage) as fallback
+        const cached = browserCache.getTempData('dashboard');
+        if (cached && cached.data?.charts?.length > 0) {
+          console.log('[Dashboard] Loading from temporary cache');
+          setData(cached.data);
+          setLastUpdated(cached.lastUpdated);
+          setLoading(false);
+          dashboardData = cached.data;
+          updatedAt = cached.lastUpdated;
+        } else {
+          // No cache - fetch fresh data
+          const response = await dashboardAPI.getDashboard();
+          dashboardData = response.data;
+          updatedAt = dashboardData.lastUpdated || new Date().toISOString();
+          
+          setData(dashboardData);
+          setLastUpdated(updatedAt);
+          setLoading(false);
+        }
       }
       
-      // Check temporary cache (sessionStorage) as fallback
-      const cached = browserCache.getTempData('dashboard');
-      if (cached && cached.data?.charts?.length > 0) {
-        console.log('[Dashboard] Loading from temporary cache');
-        setData(cached.data);
-        setLastUpdated(cached.lastUpdated);
-        setLoading(false);
-      }
-
-      const response = await dashboardAPI.getDashboard();
-      const dashboardData = response.data;
-      const updatedAt = dashboardData.lastUpdated || new Date().toISOString();
-      
-      // If no data and autoRefreshIfEmpty is true, trigger refresh (but only once)
-      if ((!dashboardData.charts || dashboardData.charts.length === 0) && autoRefreshIfEmpty) {
+      // ⚠️ CRITICAL: Always run startup-fill, even if we loaded from cache
+      // This ensures transcriptions are created/updated on every page load
+      if (dashboardData) {
+        // If no data and autoRefreshIfEmpty is true, trigger refresh (but only once)
+        if ((!dashboardData.charts || dashboardData.charts.length === 0) && autoRefreshIfEmpty) {
         console.log('No data found, auto-refreshing...');
         try {
           // Add delay to prevent rate limit issues
@@ -88,32 +108,33 @@ export const useDashboardData = () => {
             data: refreshedData,
             lastUpdated: refreshedUpdatedAt,
           });
-          return;
+          dashboardData = refreshedData;
+          updatedAt = refreshedUpdatedAt;
         } catch (refreshErr) {
           console.error('Auto-refresh error:', refreshErr);
           // Continue with original data even if empty
         }
-      }
-      
-      setData(dashboardData);
-      setLastUpdated(updatedAt);
-      
-      // Cache for 5 minutes (temporary)
-      browserCache.setTempData('dashboard', {
-        data: dashboardData,
-        lastUpdated: updatedAt,
-      }, 300000);
-      
-      // Also save to persistent cache (survives browser close)
-      browserCache.setPersistentData('dashboard', {
-        data: dashboardData,
-        lastUpdated: updatedAt,
-      });
-      
-      // 🧠 CRITICAL: On initial site load, send all charts to OpenAI and save to DB
-      // This ensures every chart has a transcription in the DB
-      // Wait for charts to render first
-      if (dashboardData.charts && dashboardData.charts.length > 0) {
+        }
+        
+        setData(dashboardData);
+        setLastUpdated(updatedAt);
+        
+        // Cache for 5 minutes (temporary)
+        browserCache.setTempData('dashboard', {
+          data: dashboardData,
+          lastUpdated: updatedAt,
+        }, 300000);
+        
+        // Also save to persistent cache (survives browser close)
+        browserCache.setPersistentData('dashboard', {
+          data: dashboardData,
+          lastUpdated: updatedAt,
+        });
+        
+        // 🧠 CRITICAL: On initial site load, send all charts to OpenAI and save to DB
+        // This ensures every chart has a transcription in the DB
+        // Wait for charts to render first
+        if (dashboardData.charts && dashboardData.charts.length > 0) {
         console.log(`[Dashboard Startup] 📊 Dashboard loaded with ${dashboardData.charts.length} charts. Will wait 3 seconds for charts to render...`);
         setTimeout(async () => {
           try {
@@ -200,14 +221,17 @@ export const useDashboardData = () => {
                 
                 if (chartElement) {
                   // Capture chart image
+                  // ⚠️ CRITICAL: Use scale: 0.5 to reduce image size and avoid rate limits
+                  // This reduces the token count per image significantly (from ~115K to ~30K)
                   const canvas = await html2canvas(chartElement, {
                     backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
-                    scale: 1,
+                    scale: 0.5, // Reduced from 1 to 0.5 to reduce image size and token count
                     logging: false,
                     useCORS: true
                   });
                   
                   const imageUrl = canvas.toDataURL('image/png');
+                  console.log(`[Dashboard Startup] Chart ${chartId} image captured, size: ${imageUrl.length} chars`);
                   const topic = `${chart.title || chartId}`;
                   const chartData = chart.data || {};
                   
