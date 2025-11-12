@@ -155,12 +155,13 @@ export const chartTranscriptionAPI = {
     return api.post('/ai/chart-transcription/startup-fill', { charts });
   },
   // POST: Refresh transcription (always runs OpenAI and overwrites DB) - Refresh/Morning flow
-  refreshTranscription: (chartId, imageUrl, topic, chartData) => {
+  refreshTranscription: (chartId, imageUrl, topic, chartData, force = false) => {
     const payload = {
       chartId,
       topic: topic || '',
       chartData: chartData || {},
-      imageUrl
+      imageUrl,
+      force
     };
     return api.post('/ai/chart-transcription/refresh', payload);
   },
