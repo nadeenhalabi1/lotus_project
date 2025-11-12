@@ -167,7 +167,13 @@ export async function getTranscriptionByChartId(chartId) {
  */
 export async function upsertTranscription({ chartId, signature, model = 'gpt-4o', text }) {
   if (!DATABASE_URL) {
+    console.error(`[upsertTranscription] ❌ DATABASE_URL not available for chartId: ${chartId}`);
     throw new Error('DATABASE_URL not available');
+  }
+  
+  if (!chartId) {
+    console.error(`[upsertTranscription] ❌ chartId is required`);
+    throw new Error('chartId is required');
   }
   
   if (!text || !text.trim()) {
@@ -179,7 +185,12 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
     console.log(`[upsertTranscription] 🔄 Attempting to upsert transcription for ${chartId}...`);
     console.log(`[upsertTranscription] Signature: ${signature?.substring(0, 8)}..., Model: ${model}, Text length: ${text?.length || 0}`);
     
-    const result = await getPool().query(
+    const pool = getPool();
+    if (!pool) {
+      throw new Error('Database pool not available');
+    }
+    
+    const result = await pool.query(
       `INSERT INTO ai_chart_transcriptions 
        (chart_id, chart_signature, model, transcription_text, updated_at)
        VALUES ($1, $2, $3, $4, NOW())
@@ -190,20 +201,29 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
          transcription_text = EXCLUDED.transcription_text,
          updated_at = NOW()
        RETURNING chart_id, updated_at, transcription_text`,
-      [chartId, signature, model, text]
+      [chartId, signature || '', model, text || '']
     );
     
-    if (result.rows && result.rows.length > 0) {
+    if (result && result.rows && result.rows.length > 0) {
       const row = result.rows[0];
       console.log(`[upsertTranscription] ✅ Successfully upserted transcription for ${chartId}`);
       console.log(`[upsertTranscription] Updated at: ${row.updated_at}, Text length in DB: ${row.transcription_text?.length || 0}`);
       
       // Verify the text was actually saved
       if (row.transcription_text !== text) {
-        console.error(`[upsertTranscription] ⚠️ WARNING: Text mismatch! Sent ${text.length} chars, but DB has ${row.transcription_text?.length || 0} chars`);
+        console.error(`[upsertTranscription] ⚠️ WARNING: Text mismatch! Sent ${text?.length || 0} chars, but DB has ${row.transcription_text?.length || 0} chars`);
+        console.error(`[upsertTranscription] First 100 chars sent: ${text?.substring(0, 100)}`);
+        console.error(`[upsertTranscription] First 100 chars in DB: ${row.transcription_text?.substring(0, 100)}`);
+      } else {
+        console.log(`[upsertTranscription] ✅ Verified: Text matches what was saved`);
       }
+      
+      // Return the saved transcription text for verification
+      return row.transcription_text;
     } else {
-      console.warn(`[upsertTranscription] ⚠️ No rows returned from upsert for ${chartId}`);
+      console.error(`[upsertTranscription] ⚠️ CRITICAL: No rows returned from upsert for ${chartId}!`);
+      console.error(`[upsertTranscription] Result object:`, result);
+      throw new Error(`Failed to save transcription to DB - no rows returned`);
     }
   } catch (err) {
     console.error('[upsertTranscription] ❌ Database error:', {
@@ -212,7 +232,8 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
       detail: err.detail,
       hint: err.hint,
       chartId,
-      signature: signature?.substring(0, 8)
+      signature: signature?.substring(0, 8),
+      stack: err.stack
     });
     
     // Check if table doesn't exist
@@ -221,7 +242,8 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
       throw new Error('Database table does not exist. Please run migration.');
     }
     
-    throw new Error(`Database error: ${err.message}`);
+    // Re-throw the error so it can be caught by the calling code
+    throw err;
   }
 }
 

@@ -165,21 +165,31 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
     
     // Save/update to DB (upsert)
     console.log(`[POST /chart-transcription/${chartId}] 💾 Saving transcription to DB...`);
-    await upsertTranscription({ chartId, signature, text: transcription_text, model });
-    console.log(`[POST /chart-transcription/${chartId}] ✅ Transcription saved to DB successfully`);
-    
-    // Verify the transcription was saved by reading it back from DB
     try {
-      const verify = await getTranscriptionByChartId(chartId);
-      if (verify && verify.transcription_text === transcription_text) {
-        console.log(`[POST /chart-transcription/${chartId}] ✅ Verified: Transcription matches what was saved`);
-      } else {
-        console.error(`[POST /chart-transcription/${chartId}] ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
-        console.error(`[POST /chart-transcription/${chartId}] Saved: ${transcription_text.substring(0, 100)}...`);
-        console.error(`[POST /chart-transcription/${chartId}] DB: ${verify?.transcription_text?.substring(0, 100) || 'null'}...`);
+      const savedText = await upsertTranscription({ chartId, signature, text: transcription_text, model });
+      console.log(`[POST /chart-transcription/${chartId}] ✅ Transcription saved to DB successfully`);
+      console.log(`[POST /chart-transcription/${chartId}] Saved text length: ${savedText?.length || 0}`);
+      
+      // Verify the transcription was saved by reading it back from DB
+      try {
+        const verify = await getTranscriptionByChartId(chartId);
+        if (verify && verify.transcription_text === transcription_text) {
+          console.log(`[POST /chart-transcription/${chartId}] ✅ Verified: Transcription matches what was saved`);
+        } else {
+          console.error(`[POST /chart-transcription/${chartId}] ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
+          console.error(`[POST /chart-transcription/${chartId}] Original text length: ${transcription_text?.length || 0}`);
+          console.error(`[POST /chart-transcription/${chartId}] DB text length: ${verify?.transcription_text?.length || 0}`);
+          console.error(`[POST /chart-transcription/${chartId}] Saved: ${transcription_text?.substring(0, 100)}...`);
+          console.error(`[POST /chart-transcription/${chartId}] DB: ${verify?.transcription_text?.substring(0, 100) || 'null'}...`);
+        }
+      } catch (verifyErr) {
+        console.error(`[POST /chart-transcription/${chartId}] ⚠️ Could not verify transcription in DB:`, verifyErr.message);
+        console.error(`[POST /chart-transcription/${chartId}] Verification error stack:`, verifyErr.stack);
       }
-    } catch (verifyErr) {
-      console.error(`[POST /chart-transcription/${chartId}] ⚠️ Could not verify transcription in DB:`, verifyErr.message);
+    } catch (saveErr) {
+      console.error(`[POST /chart-transcription/${chartId}] ❌ CRITICAL: Failed to save transcription to DB:`, saveErr.message);
+      console.error(`[POST /chart-transcription/${chartId}] Save error stack:`, saveErr.stack);
+      throw saveErr; // Re-throw to be caught by outer try-catch
     }
     
     if (wasCreated) {
@@ -271,22 +281,34 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
         
         // Save to DB - DB is the single source of truth
         console.log(`[startup-fill] Chart ${chartId} 💾 Saving transcription to DB...`);
-        await upsertTranscription({ chartId, signature, text, model });
-        console.log(`[startup-fill] Chart ${chartId} ✅ Transcription saved to DB successfully`);
-        
-        // Verify the transcription was saved by reading it back from DB
         try {
-          const verify = await getTranscriptionByChartId(chartId);
-          if (verify && verify.transcription_text === text) {
-            console.log(`[startup-fill] Chart ${chartId} ✅ Verified: Transcription matches what was saved`);
-          } else {
-            console.error(`[startup-fill] Chart ${chartId} ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
+          const savedText = await upsertTranscription({ chartId, signature, text, model });
+          console.log(`[startup-fill] Chart ${chartId} ✅ Transcription saved to DB successfully`);
+          console.log(`[startup-fill] Chart ${chartId} Saved text length: ${savedText?.length || 0}`);
+          
+          // Verify the transcription was saved by reading it back from DB
+          try {
+            const verify = await getTranscriptionByChartId(chartId);
+            if (verify && verify.transcription_text === text) {
+              console.log(`[startup-fill] Chart ${chartId} ✅ Verified: Transcription matches what was saved`);
+            } else {
+              console.error(`[startup-fill] Chart ${chartId} ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
+              console.error(`[startup-fill] Chart ${chartId} Original text length: ${text?.length || 0}`);
+              console.error(`[startup-fill] Chart ${chartId} DB text length: ${verify?.transcription_text?.length || 0}`);
+            }
+          } catch (verifyErr) {
+            console.error(`[startup-fill] Chart ${chartId} ⚠️ Could not verify transcription in DB:`, verifyErr.message);
+            console.error(`[startup-fill] Chart ${chartId} Verification error stack:`, verifyErr.stack);
           }
-        } catch (verifyErr) {
-          console.error(`[startup-fill] Chart ${chartId} ⚠️ Could not verify transcription in DB:`, verifyErr.message);
+          
+          results.push({ chartId, status: 'updated', signature });
+        } catch (saveErr) {
+          console.error(`[startup-fill] Chart ${chartId} ❌ CRITICAL: Failed to save transcription to DB:`, saveErr.message);
+          console.error(`[startup-fill] Chart ${chartId} Save error stack:`, saveErr.stack);
+          results.push({ chartId, status: 'error', error: `Failed to save to DB: ${saveErr.message}` });
+          // Don't continue - this is a critical error
+          throw saveErr;
         }
-        
-        results.push({ chartId, status: 'updated', signature });
       } catch (err) {
         console.error(`[startup-fill] Error for chart ${chartId}:`, {
           message: err.message,
@@ -345,19 +367,29 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       
       // Save to DB - DB is the single source of truth (overwrites existing)
       console.log(`[refresh] Chart ${chartId} 💾 Saving transcription to DB...`);
-      await upsertTranscription({ chartId, signature, text, model });
-      console.log(`[refresh] Chart ${chartId} ✅ Transcription saved to DB successfully`);
-      
-      // Verify the transcription was saved by reading it back from DB
       try {
-        const verify = await getTranscriptionByChartId(chartId);
-        if (verify && verify.transcription_text === text) {
-          console.log(`[refresh] Chart ${chartId} ✅ Verified: Transcription matches what was saved`);
-        } else {
-          console.error(`[refresh] Chart ${chartId} ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
+        const savedText = await upsertTranscription({ chartId, signature, text, model });
+        console.log(`[refresh] Chart ${chartId} ✅ Transcription saved to DB successfully`);
+        console.log(`[refresh] Chart ${chartId} Saved text length: ${savedText?.length || 0}`);
+        
+        // Verify the transcription was saved by reading it back from DB
+        try {
+          const verify = await getTranscriptionByChartId(chartId);
+          if (verify && verify.transcription_text === text) {
+            console.log(`[refresh] Chart ${chartId} ✅ Verified: Transcription matches what was saved`);
+          } else {
+            console.error(`[refresh] Chart ${chartId} ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
+            console.error(`[refresh] Chart ${chartId} Original text length: ${text?.length || 0}`);
+            console.error(`[refresh] Chart ${chartId} DB text length: ${verify?.transcription_text?.length || 0}`);
+          }
+        } catch (verifyErr) {
+          console.error(`[refresh] Chart ${chartId} ⚠️ Could not verify transcription in DB:`, verifyErr.message);
+          console.error(`[refresh] Chart ${chartId} Verification error stack:`, verifyErr.stack);
         }
-      } catch (verifyErr) {
-        console.error(`[refresh] Chart ${chartId} ⚠️ Could not verify transcription in DB:`, verifyErr.message);
+      } catch (saveErr) {
+        console.error(`[refresh] Chart ${chartId} ❌ CRITICAL: Failed to save transcription to DB:`, saveErr.message);
+        console.error(`[refresh] Chart ${chartId} Save error stack:`, saveErr.stack);
+        throw saveErr; // Re-throw to be caught by outer try-catch
       }
       
       return res.json({ 
@@ -406,19 +438,29 @@ router.post('/chart-transcription/refresh', async (req, res) => {
     
     // Save to DB - DB is the single source of truth (overwrites existing)
     console.log(`[refresh] Chart ${chartId} 💾 Saving transcription to DB...`);
-    await upsertTranscription({ chartId, signature, text, model });
-    console.log(`[refresh] Chart ${chartId} ✅ Transcription saved to DB successfully`);
-    
-    // Verify the transcription was saved by reading it back from DB
     try {
-      const verify = await getTranscriptionByChartId(chartId);
-      if (verify && verify.transcription_text === text) {
-        console.log(`[refresh] Chart ${chartId} ✅ Verified: Transcription matches what was saved`);
-      } else {
-        console.error(`[refresh] Chart ${chartId} ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
+      const savedText = await upsertTranscription({ chartId, signature, text, model });
+      console.log(`[refresh] Chart ${chartId} ✅ Transcription saved to DB successfully`);
+      console.log(`[refresh] Chart ${chartId} Saved text length: ${savedText?.length || 0}`);
+      
+      // Verify the transcription was saved by reading it back from DB
+      try {
+        const verify = await getTranscriptionByChartId(chartId);
+        if (verify && verify.transcription_text === text) {
+          console.log(`[refresh] Chart ${chartId} ✅ Verified: Transcription matches what was saved`);
+        } else {
+          console.error(`[refresh] Chart ${chartId} ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
+          console.error(`[refresh] Chart ${chartId} Original text length: ${text?.length || 0}`);
+          console.error(`[refresh] Chart ${chartId} DB text length: ${verify?.transcription_text?.length || 0}`);
+        }
+      } catch (verifyErr) {
+        console.error(`[refresh] Chart ${chartId} ⚠️ Could not verify transcription in DB:`, verifyErr.message);
+        console.error(`[refresh] Chart ${chartId} Verification error stack:`, verifyErr.stack);
       }
-    } catch (verifyErr) {
-      console.error(`[refresh] Chart ${chartId} ⚠️ Could not verify transcription in DB:`, verifyErr.message);
+    } catch (saveErr) {
+      console.error(`[refresh] Chart ${chartId} ❌ CRITICAL: Failed to save transcription to DB:`, saveErr.message);
+      console.error(`[refresh] Chart ${chartId} Save error stack:`, saveErr.stack);
+      throw saveErr; // Re-throw to be caught by outer try-catch
     }
 
     res.json({ 
