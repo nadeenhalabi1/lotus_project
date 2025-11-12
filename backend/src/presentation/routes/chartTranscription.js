@@ -265,7 +265,26 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
       }
 
       try {
+        // 🔍 DEBUG: Log what we received
+        console.log(`[startup-fill] Chart ${chartId} received data:`, {
+          topic: topic || 'none',
+          chartDataType: Array.isArray(chartData) ? 'array' : typeof chartData,
+          chartDataLength: Array.isArray(chartData) 
+            ? chartData.length 
+            : (chartData && typeof chartData === 'object' ? Object.keys(chartData).length : 0),
+          chartDataPreview: Array.isArray(chartData)
+            ? JSON.stringify(chartData.slice(0, 2))
+            : (chartData && typeof chartData === 'object' ? JSON.stringify(Object.keys(chartData).slice(0, 5)) : String(chartData).substring(0, 100))
+        });
+        
         const signature = computeChartSignature(topic, chartData);
+        
+        // 🔍 DEBUG: Log signature computation
+        console.log(`[startup-fill] Chart ${chartId} computed signature:`, {
+          signature: signature.substring(0, 32) + '...',
+          signatureLength: signature.length,
+          chartDataStringified: JSON.stringify(chartData).substring(0, 200)
+        });
         
         // Try to get existing transcription (may fail if table doesn't exist - that's OK)
         let existing = null;
@@ -279,8 +298,8 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
         // 🔍 DEBUG: Log existing transcription status
         console.log(`[startup-fill] Chart ${chartId} existing transcription check:`, {
           exists: !!existing,
-          existingSignature: existing?.chart_signature?.substring(0, 16) + '...',
-          newSignature: signature?.substring(0, 16) + '...',
+          existingSignature: existing?.chart_signature?.substring(0, 32) + '...',
+          newSignature: signature?.substring(0, 32) + '...',
           signaturesMatch: existing?.chart_signature === signature,
           force: force
         });

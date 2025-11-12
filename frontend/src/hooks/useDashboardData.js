@@ -178,6 +178,17 @@ export const useDashboardData = () => {
                   const topic = `${chart.title || chartId}`;
                   const chartData = chart.data || {};
                   
+                  // 🔍 DEBUG: Log what we're sending
+                  console.log(`[Dashboard Startup] Chart ${chartId} data structure:`, {
+                    hasData: !!chart.data,
+                    dataType: Array.isArray(chart.data) ? 'array' : typeof chart.data,
+                    dataLength: Array.isArray(chart.data) ? chart.data.length : Object.keys(chart.data || {}).length,
+                    dataPreview: Array.isArray(chart.data) 
+                      ? chart.data.slice(0, 3) 
+                      : Object.keys(chart.data || {}).slice(0, 5),
+                    topic
+                  });
+                  
                   chartsForStartupFill.push({
                     chartId,
                     topic,
