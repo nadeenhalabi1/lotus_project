@@ -185,10 +185,14 @@ export async function upsertAndReturn({ chartId, signature, model = 'gpt-4o-mini
  * No caching, no local storage - everything is managed in DB
  */
 export async function upsertTranscription({ chartId, signature, model = 'gpt-4o-mini', text }) {
+  // ⚠️ CRITICAL: Check DATABASE_URL availability
   if (!DATABASE_URL) {
     console.error(`[upsertTranscription] ❌ DATABASE_URL not available for chartId: ${chartId}`);
+    console.error(`[upsertTranscription] ❌ Environment variables: DATABASE_URL=${process.env.DATABASE_URL ? 'SET' : 'NOT SET'}`);
     throw new Error('DATABASE_URL not available');
   }
+  
+  console.log(`[upsertTranscription] ✅ DATABASE_URL is available, proceeding with DB write for ${chartId}`);
   
   if (!chartId) {
     console.error(`[upsertTranscription] ❌ chartId is required`);
@@ -320,8 +324,18 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o-
     
     if (result && result.rows && result.rows.length > 0) {
       const row = result.rows[0];
-      console.log(`[upsertTranscription] ✅ Successfully upserted transcription for ${chartId}`);
-      console.log(`[upsertTranscription] Updated at: ${row.updated_at}, Text length in DB: ${row.transcription_text?.length || 0}`);
+      console.log(`[upsertTranscription] ✅✅✅ SUCCESS: Upserted transcription for ${chartId} to DB!`);
+      console.log(`[upsertTranscription] ✅ Row details:`, {
+        chart_id: row.chart_id,
+        chart_signature: row.chart_signature?.substring(0, 16) + '...',
+        model: row.model,
+        transcription_text_length: row.transcription_text?.length || 0,
+        transcription_text_preview: row.transcription_text?.substring(0, 100) + '...',
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      });
+      console.log(`[upsertTranscription] ✅ Updated at: ${row.updated_at}`);
+      console.log(`[upsertTranscription] ✅ Text length in DB: ${row.transcription_text?.length || 0} chars`);
       
       // Verify the text was actually saved
       if (row.transcription_text !== text) {
@@ -329,7 +343,22 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o-
         console.error(`[upsertTranscription] First 100 chars sent: ${text?.substring(0, 100)}`);
         console.error(`[upsertTranscription] First 100 chars in DB: ${row.transcription_text?.substring(0, 100)}`);
       } else {
-        console.log(`[upsertTranscription] ✅ Verified: Text matches what was saved`);
+        console.log(`[upsertTranscription] ✅✅✅ VERIFIED: Text matches what was saved to DB!`);
+      }
+      
+      // ⚠️ CRITICAL: Verify by reading back from DB immediately
+      try {
+        console.log(`[upsertTranscription] 🔍 Verifying DB write by reading back from DB...`);
+        const verify = await getTranscriptionByChartId(chartId);
+        if (verify && verify.transcription_text === text) {
+          console.log(`[upsertTranscription] ✅✅✅ DB VERIFICATION SUCCESS: Transcription confirmed in DB for ${chartId}`);
+          console.log(`[upsertTranscription] ✅ Verified text length: ${verify.transcription_text?.length || 0} chars`);
+        } else {
+          console.error(`[upsertTranscription] ❌❌❌ DB VERIFICATION FAILED: Transcription NOT found or mismatch for ${chartId}`);
+          console.error(`[upsertTranscription] Expected length: ${text?.length || 0}, Found length: ${verify?.transcription_text?.length || 0}`);
+        }
+      } catch (verifyErr) {
+        console.error(`[upsertTranscription] ❌ Could not verify DB write:`, verifyErr.message);
       }
       
       // Return the saved transcription text for verification
@@ -337,6 +366,8 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o-
     } else {
       console.error(`[upsertTranscription] ⚠️ CRITICAL: No rows returned from upsert for ${chartId}!`);
       console.error(`[upsertTranscription] Result object:`, result);
+      console.error(`[upsertTranscription] Result type:`, typeof result);
+      console.error(`[upsertTranscription] Result keys:`, result ? Object.keys(result) : 'null');
       throw new Error(`Failed to save transcription to DB - no rows returned`);
     }
   } catch (err) {
