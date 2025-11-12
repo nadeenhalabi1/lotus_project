@@ -519,9 +519,28 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       const signature = computeChartSignature(topic || '', chartData || {});
       console.log(`[refresh] Chart ${chartId} computed signature: ${signature.substring(0, 16)}...`);
       
-      console.log(`[refresh] Chart ${chartId} 📞 Calling OpenAI to generate transcription...`);
+      // ⚠️ CRITICAL: Compress chartData before sending to OpenAI to reduce token usage
+      let compressedChartData = chartData;
+      if (Array.isArray(chartData) && chartData.length > 50) {
+        compressedChartData = chartData.slice(0, 50);
+        console.log(`[refresh] Chart ${chartId} Compressed chartData from ${chartData.length} to 50 items`);
+      } else if (chartData && typeof chartData === 'object' && Object.keys(chartData).length > 20) {
+        const keys = Object.keys(chartData).slice(0, 20);
+        compressedChartData = keys.reduce((acc, key) => {
+          acc[key] = chartData[key];
+          return acc;
+        }, {});
+        console.log(`[refresh] Chart ${chartId} Compressed chartData from ${Object.keys(chartData).length} to 20 keys`);
+      }
+      
+      // ⚠️ CRITICAL: Use queue to process OpenAI requests sequentially and prevent TPM limit
+      console.log(`[refresh] Chart ${chartId} 📞 Calling OpenAI to generate transcription (queued)...`);
       console.log(`[refresh] Chart ${chartId} Image URL length: ${imageUrl?.length || 0}, Topic: ${topic || 'none'}`);
-      const text = await transcribeChartImage({ imageUrl, context: topic });
+      
+      const text = await openaiQueue.enqueue(async () => {
+        return await transcribeChartImage({ imageUrl, context: topic });
+      });
+      
       console.log(`[refresh] Chart ${chartId} ✅ OpenAI returned transcription (${text?.length || 0} chars)`);
       
       // 🔍 DEBUG: Log the actual transcription text (first 200 chars)
