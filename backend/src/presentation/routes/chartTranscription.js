@@ -154,10 +154,33 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
     }
     
     // Call OpenAI to generate transcription
+    console.log(`[POST /chart-transcription/${chartId}] 📞 Calling OpenAI to generate transcription...`);
     const transcription_text = await transcribeChartImage({ imageUrl, context: topic });
+    console.log(`[POST /chart-transcription/${chartId}] ✅ OpenAI returned transcription (${transcription_text?.length || 0} chars)`);
+    
+    if (!transcription_text || !transcription_text.trim()) {
+      console.error(`[POST /chart-transcription/${chartId}] ⚠️ WARNING: OpenAI returned empty transcription!`);
+      throw new Error('OpenAI returned empty transcription');
+    }
     
     // Save/update to DB (upsert)
+    console.log(`[POST /chart-transcription/${chartId}] 💾 Saving transcription to DB...`);
     await upsertTranscription({ chartId, signature, text: transcription_text, model });
+    console.log(`[POST /chart-transcription/${chartId}] ✅ Transcription saved to DB successfully`);
+    
+    // Verify the transcription was saved by reading it back from DB
+    try {
+      const verify = await getTranscriptionByChartId(chartId);
+      if (verify && verify.transcription_text === transcription_text) {
+        console.log(`[POST /chart-transcription/${chartId}] ✅ Verified: Transcription matches what was saved`);
+      } else {
+        console.error(`[POST /chart-transcription/${chartId}] ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
+        console.error(`[POST /chart-transcription/${chartId}] Saved: ${transcription_text.substring(0, 100)}...`);
+        console.error(`[POST /chart-transcription/${chartId}] DB: ${verify?.transcription_text?.substring(0, 100) || 'null'}...`);
+      }
+    } catch (verifyErr) {
+      console.error(`[POST /chart-transcription/${chartId}] ⚠️ Could not verify transcription in DB:`, verifyErr.message);
+    }
     
     if (wasCreated) {
       console.log(`[POST /chart-transcription/${chartId}] ✅ Transcription created and saved to DB`);
@@ -238,9 +261,31 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
         // Generate new transcription via OpenAI and save to DB
         console.log(`[startup-fill] Generating transcription for ${chartId} via OpenAI...`);
         const text = await transcribeChartImage({ imageUrl, context: topic });
+        console.log(`[startup-fill] Chart ${chartId} ✅ OpenAI returned transcription (${text?.length || 0} chars)`);
+        
+        if (!text || !text.trim()) {
+          console.error(`[startup-fill] Chart ${chartId} ⚠️ WARNING: OpenAI returned empty transcription!`);
+          results.push({ chartId, status: 'error', error: 'OpenAI returned empty transcription' });
+          continue;
+        }
+        
         // Save to DB - DB is the single source of truth
+        console.log(`[startup-fill] Chart ${chartId} 💾 Saving transcription to DB...`);
         await upsertTranscription({ chartId, signature, text, model });
-        console.log(`[startup-fill] Chart ${chartId} transcription saved to DB successfully`);
+        console.log(`[startup-fill] Chart ${chartId} ✅ Transcription saved to DB successfully`);
+        
+        // Verify the transcription was saved by reading it back from DB
+        try {
+          const verify = await getTranscriptionByChartId(chartId);
+          if (verify && verify.transcription_text === text) {
+            console.log(`[startup-fill] Chart ${chartId} ✅ Verified: Transcription matches what was saved`);
+          } else {
+            console.error(`[startup-fill] Chart ${chartId} ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
+          }
+        } catch (verifyErr) {
+          console.error(`[startup-fill] Chart ${chartId} ⚠️ Could not verify transcription in DB:`, verifyErr.message);
+        }
+        
         results.push({ chartId, status: 'updated', signature });
       } catch (err) {
         console.error(`[startup-fill] Error for chart ${chartId}:`, {
@@ -287,9 +332,33 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       console.log(`[refresh] Chart ${chartId} force=true - generating new transcription regardless of signature`);
       // Generate new transcription via OpenAI
       const signature = computeChartSignature(topic || '', chartData || {});
+      console.log(`[refresh] Chart ${chartId} computed signature: ${signature.substring(0, 8)}...`);
+      
+      console.log(`[refresh] Chart ${chartId} 📞 Calling OpenAI to generate transcription...`);
       const text = await transcribeChartImage({ imageUrl, context: topic });
+      console.log(`[refresh] Chart ${chartId} ✅ OpenAI returned transcription (${text?.length || 0} chars)`);
+      
+      if (!text || !text.trim()) {
+        console.error(`[refresh] Chart ${chartId} ⚠️ WARNING: OpenAI returned empty transcription!`);
+        throw new Error('OpenAI returned empty transcription');
+      }
+      
       // Save to DB - DB is the single source of truth (overwrites existing)
+      console.log(`[refresh] Chart ${chartId} 💾 Saving transcription to DB...`);
       await upsertTranscription({ chartId, signature, text, model });
+      console.log(`[refresh] Chart ${chartId} ✅ Transcription saved to DB successfully`);
+      
+      // Verify the transcription was saved by reading it back from DB
+      try {
+        const verify = await getTranscriptionByChartId(chartId);
+        if (verify && verify.transcription_text === text) {
+          console.log(`[refresh] Chart ${chartId} ✅ Verified: Transcription matches what was saved`);
+        } else {
+          console.error(`[refresh] Chart ${chartId} ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
+        }
+      } catch (verifyErr) {
+        console.error(`[refresh] Chart ${chartId} ⚠️ Could not verify transcription in DB:`, verifyErr.message);
+      }
       
       return res.json({ 
         ok: true, 
@@ -326,9 +395,31 @@ router.post('/chart-transcription/refresh', async (req, res) => {
     }
     
     // Generate new transcription via OpenAI (data changed)
+    console.log(`[refresh] Chart ${chartId} 📞 Calling OpenAI to generate transcription...`);
     const text = await transcribeChartImage({ imageUrl, context: topic });
+    console.log(`[refresh] Chart ${chartId} ✅ OpenAI returned transcription (${text?.length || 0} chars)`);
+    
+    if (!text || !text.trim()) {
+      console.error(`[refresh] Chart ${chartId} ⚠️ WARNING: OpenAI returned empty transcription!`);
+      throw new Error('OpenAI returned empty transcription');
+    }
+    
     // Save to DB - DB is the single source of truth (overwrites existing)
+    console.log(`[refresh] Chart ${chartId} 💾 Saving transcription to DB...`);
     await upsertTranscription({ chartId, signature, text, model });
+    console.log(`[refresh] Chart ${chartId} ✅ Transcription saved to DB successfully`);
+    
+    // Verify the transcription was saved by reading it back from DB
+    try {
+      const verify = await getTranscriptionByChartId(chartId);
+      if (verify && verify.transcription_text === text) {
+        console.log(`[refresh] Chart ${chartId} ✅ Verified: Transcription matches what was saved`);
+      } else {
+        console.error(`[refresh] Chart ${chartId} ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
+      }
+    } catch (verifyErr) {
+      console.error(`[refresh] Chart ${chartId} ⚠️ Could not verify transcription in DB:`, verifyErr.message);
+    }
 
     res.json({ 
       ok: true, 

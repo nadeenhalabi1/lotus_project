@@ -170,8 +170,16 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
     throw new Error('DATABASE_URL not available');
   }
   
+  if (!text || !text.trim()) {
+    console.warn(`[upsertTranscription] ⚠️ Warning: Empty transcription text for ${chartId}`);
+    // Don't throw - allow empty text to be saved (might be valid in some cases)
+  }
+  
   try {
-    await getPool().query(
+    console.log(`[upsertTranscription] 🔄 Attempting to upsert transcription for ${chartId}...`);
+    console.log(`[upsertTranscription] Signature: ${signature?.substring(0, 8)}..., Model: ${model}, Text length: ${text?.length || 0}`);
+    
+    const result = await getPool().query(
       `INSERT INTO ai_chart_transcriptions 
        (chart_id, chart_signature, model, transcription_text, updated_at)
        VALUES ($1, $2, $3, $4, NOW())
@@ -180,16 +188,31 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
          chart_signature = EXCLUDED.chart_signature,
          model = EXCLUDED.model,
          transcription_text = EXCLUDED.transcription_text,
-         updated_at = NOW()`,
+         updated_at = NOW()
+       RETURNING chart_id, updated_at, transcription_text`,
       [chartId, signature, model, text]
     );
-    console.log(`[upsertTranscription] Upserted transcription for ${chartId}`);
+    
+    if (result.rows && result.rows.length > 0) {
+      const row = result.rows[0];
+      console.log(`[upsertTranscription] ✅ Successfully upserted transcription for ${chartId}`);
+      console.log(`[upsertTranscription] Updated at: ${row.updated_at}, Text length in DB: ${row.transcription_text?.length || 0}`);
+      
+      // Verify the text was actually saved
+      if (row.transcription_text !== text) {
+        console.error(`[upsertTranscription] ⚠️ WARNING: Text mismatch! Sent ${text.length} chars, but DB has ${row.transcription_text?.length || 0} chars`);
+      }
+    } else {
+      console.warn(`[upsertTranscription] ⚠️ No rows returned from upsert for ${chartId}`);
+    }
   } catch (err) {
-    console.error('[upsertTranscription] Database error:', {
+    console.error('[upsertTranscription] ❌ Database error:', {
       message: err.message,
       code: err.code,
       detail: err.detail,
-      hint: err.hint
+      hint: err.hint,
+      chartId,
+      signature: signature?.substring(0, 8)
     });
     
     // Check if table doesn't exist
