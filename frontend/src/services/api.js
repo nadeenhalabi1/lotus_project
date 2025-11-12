@@ -147,13 +147,15 @@ export const chartTranscriptionAPI = {
     return api.get(`/ai/chart-transcription/${chartId}`);
   },
   // POST: Get-or-create transcription (if exists return it, otherwise create via OpenAI)
-  // body: { topic?: string, chartData?: any, imageUrl: string }
-  // Returns: { created: boolean, chartId: string, transcription_text: string }
-  getOrCreateTranscription: (chartId, topic, chartData, imageUrl) => {
+  // Checks signature - if changed, calls OpenAI and updates DB
+  // body: { topic?: string, chartData?: any, imageUrl: string, model?: string }
+  // Returns: { created: boolean, updated: boolean, chartId: string, chart_signature: string, model: string, transcription_text: string }
+  getOrCreateTranscription: (chartId, topic, chartData, imageUrl, model = 'gpt-4o-mini') => {
     return api.post(`/ai/chart-transcription/${chartId}`, {
       topic,
       chartData,
-      imageUrl
+      imageUrl,
+      model
     });
   },
   // POST: Startup fill - batch process all charts (runs OpenAI only if needed)
@@ -161,13 +163,15 @@ export const chartTranscriptionAPI = {
     return api.post('/ai/chart-transcription/startup-fill', { charts });
   },
   // POST: Refresh transcription (always runs OpenAI and overwrites DB) - Refresh/Morning flow
-  refreshTranscription: (chartId, imageUrl, topic, chartData, force = false) => {
+  // If force=true, always calls OpenAI. If force=false, checks signature first.
+  refreshTranscription: (chartId, imageUrl, topic, chartData, force = false, model = 'gpt-4o-mini') => {
     const payload = {
       chartId,
       topic: topic || '',
       chartData: chartData || {},
       imageUrl,
-      force
+      force,
+      model
     };
     return api.post('/ai/chart-transcription/refresh', payload);
   },

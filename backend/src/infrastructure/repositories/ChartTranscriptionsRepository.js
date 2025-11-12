@@ -121,7 +121,7 @@ export async function getTranscriptionByChartId(chartId) {
   
   try {
     const result = await getPool().query(
-      `SELECT chart_id, chart_signature, transcription_text, updated_at 
+      `SELECT chart_id, chart_signature, model, transcription_text, updated_at 
        FROM ai_chart_transcriptions 
        WHERE chart_id = $1 
        LIMIT 1`,
@@ -138,6 +138,7 @@ export async function getTranscriptionByChartId(chartId) {
     return {
       chart_id: row.chart_id,
       chart_signature: row.chart_signature,
+      model: row.model,
       transcription_text: row.transcription_text,
       updated_at: row.updated_at
     };

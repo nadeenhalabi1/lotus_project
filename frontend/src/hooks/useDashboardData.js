@@ -174,7 +174,8 @@ export const useDashboardData = () => {
                     chartId,
                     topic,
                     chartData,
-                    imageUrl
+                    imageUrl,
+                    model: 'gpt-4o-mini' // Default model for OpenAI transcription
                   });
                   
                   console.log(`[Dashboard Startup] Prepared chart ${chartId} for OpenAI transcription`);

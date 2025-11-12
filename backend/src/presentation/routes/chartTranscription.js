@@ -79,25 +79,34 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
 
 /**
  * POST /api/v1/ai/chart-transcription/:chartId
- * Get-or-create: If transcription exists, return it. Otherwise, create via OpenAI and save to DB.
- * body: { topic?: string, chartData?: any, imageUrl: string }
+ * Get-or-create / Update: Checks signature - if changed, calls OpenAI and updates DB.
+ * body: { topic?: string, chartData?: any, imageUrl: string, model?: string }
+ * 
+ * Logic:
+ * 1. Compute chart_signature from chartData
+ * 2. Check if row exists by chart_id
+ * 3. If no row → call OpenAI → save new transcription
+ * 4. If row exists and signature matches → reuse existing (no OpenAI call)
+ * 5. If signature differs → call OpenAI → update transcription_text, chart_signature, model, updated_at
  * 
  * Response format:
- * - If existed: { created: false, chartId: string, transcription_text: string }
- * - If created: { created: true, chartId: string, transcription_text: string }
+ * - If created: { created: true, updated: false, chartId, chart_signature, model, transcription_text }
+ * - If reused: { created: false, updated: false, chartId, chart_signature, model, transcription_text }
+ * - If updated: { created: false, updated: true, chartId, chart_signature, model, transcription_text }
  */
 router.post('/chart-transcription/:chartId', async (req, res) => {
   const chartId = req.params.chartId;
-  const { topic, chartData, imageUrl } = req.body || {};
+  const { topic, chartData, imageUrl, model = 'gpt-4o-mini' } = req.body || {};
   
   try {
-    console.log(`[POST /chart-transcription/${chartId}] Get-or-create request received`);
+    console.log(`[POST /chart-transcription/${chartId}] Get-or-create/update request received`);
     
     // Check if DATABASE_URL is available
     if (!process.env.DATABASE_URL) {
       console.error(`[POST /chart-transcription/${chartId}] DATABASE_URL not available`);
       return res.status(503).json({ 
         created: false,
+        updated: false,
         chartId,
         transcription_text: null,
         error: 'Database service unavailable' 
@@ -107,35 +116,61 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
     if (!imageUrl) {
       return res.status(400).json({ 
         created: false,
+        updated: false,
         chartId,
         transcription_text: null,
         error: 'imageUrl is required' 
       });
     }
     
+    // Compute signature from chartData (NOT from topic - topic is only for OpenAI context)
+    const signature = computeChartSignature(topic || '', chartData || {});
+    console.log(`[POST /chart-transcription/${chartId}] Computed signature: ${signature.substring(0, 8)}...`);
+    
     // Check if transcription already exists
     const existing = await getTranscriptionByChartId(chartId);
-    if (existing) {
-      console.log(`[POST /chart-transcription/${chartId}] Transcription exists - returning existing`);
+    
+    // If exists and signature matches → reuse existing (no OpenAI call)
+    if (existing && existing.chart_signature === signature) {
+      console.log(`[POST /chart-transcription/${chartId}] Transcription exists with matching signature - reusing existing`);
       return res.status(200).json({
         created: false,
+        updated: false,
         chartId,
+        chart_signature: existing.chart_signature,
+        model: existing.model || model,
         transcription_text: existing.transcription_text
       });
     }
     
-    // Create new transcription via OpenAI
-    console.log(`[POST /chart-transcription/${chartId}] Creating new transcription via OpenAI...`);
-    const signature = computeChartSignature(topic || '', chartData || {});
+    // If signature differs or doesn't exist → call OpenAI and save/update
+    const wasCreated = !existing;
+    const wasUpdated = !!existing;
+    
+    if (wasUpdated) {
+      console.log(`[POST /chart-transcription/${chartId}] Signature changed (${existing.chart_signature?.substring(0, 8)}... → ${signature.substring(0, 8)}...) - generating new transcription`);
+    } else {
+      console.log(`[POST /chart-transcription/${chartId}] No transcription exists - creating new one via OpenAI...`);
+    }
+    
+    // Call OpenAI to generate transcription
     const transcription_text = await transcribeChartImage({ imageUrl, context: topic });
     
-    // Save to DB
-    await upsertTranscription({ chartId, signature, text: transcription_text, model: 'gpt-4o' });
-    console.log(`[POST /chart-transcription/${chartId}] Transcription created and saved to DB`);
+    // Save/update to DB (upsert)
+    await upsertTranscription({ chartId, signature, text: transcription_text, model });
     
-    return res.status(201).json({
-      created: true,
+    if (wasCreated) {
+      console.log(`[POST /chart-transcription/${chartId}] ✅ Transcription created and saved to DB`);
+    } else {
+      console.log(`[POST /chart-transcription/${chartId}] ✅ Transcription updated in DB (signature changed)`);
+    }
+    
+    return res.status(wasCreated ? 201 : 200).json({
+      created: wasCreated,
+      updated: wasUpdated,
       chartId,
+      chart_signature: signature,
+      model,
       transcription_text
     });
   } catch (err) {
@@ -146,6 +181,7 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
     
     res.status(500).json({ 
       created: false,
+      updated: false,
       chartId,
       transcription_text: null,
       error: err?.message || 'AI/DB error'
@@ -173,7 +209,7 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
     const results = [];
     
     for (const c of charts) {
-      const { chartId, topic, chartData, imageUrl } = c || {};
+      const { chartId, topic, chartData, imageUrl, model = 'gpt-4o-mini' } = c || {};
       
       if (!chartId || !imageUrl) {
         results.push({ chartId, status: 'skip-invalid' });
@@ -203,7 +239,7 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
         console.log(`[startup-fill] Generating transcription for ${chartId} via OpenAI...`);
         const text = await transcribeChartImage({ imageUrl, context: topic });
         // Save to DB - DB is the single source of truth
-        await upsertTranscription({ chartId, signature, text, model: 'gpt-4o' });
+        await upsertTranscription({ chartId, signature, text, model });
         console.log(`[startup-fill] Chart ${chartId} transcription saved to DB successfully`);
         results.push({ chartId, status: 'updated', signature });
       } catch (err) {
@@ -236,7 +272,7 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
  */
 router.post('/chart-transcription/refresh', async (req, res) => {
   try {
-    const { chartId, topic, chartData, imageUrl, force } = req.body || {};
+    const { chartId, topic, chartData, imageUrl, force, model = 'gpt-4o-mini' } = req.body || {};
     
     if (!chartId || !imageUrl) {
       return res.status(400).json({ 
@@ -253,13 +289,14 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       const signature = computeChartSignature(topic || '', chartData || {});
       const text = await transcribeChartImage({ imageUrl, context: topic });
       // Save to DB - DB is the single source of truth (overwrites existing)
-      await upsertTranscription({ chartId, signature, text, model: 'gpt-4o' });
+      await upsertTranscription({ chartId, signature, text, model });
       
       return res.json({ 
         ok: true, 
         source: 'ai', // From OpenAI
         chartId, 
         signature, 
+        model,
         text 
       });
     }
@@ -276,6 +313,7 @@ router.post('/chart-transcription/refresh', async (req, res) => {
           source: 'db', // From DB, no OpenAI call
           chartId, 
           signature, 
+          model: existing.model || model,
           text: existing.transcription_text,
           unchanged: true
         });
@@ -290,13 +328,14 @@ router.post('/chart-transcription/refresh', async (req, res) => {
     // Generate new transcription via OpenAI (data changed)
     const text = await transcribeChartImage({ imageUrl, context: topic });
     // Save to DB - DB is the single source of truth (overwrites existing)
-    await upsertTranscription({ chartId, signature, text, model: 'gpt-4o' });
+    await upsertTranscription({ chartId, signature, text, model });
 
     res.json({ 
       ok: true, 
       source: 'ai', // From OpenAI
       chartId, 
       signature, 
+      model,
       text 
     });
   } catch (err) {
