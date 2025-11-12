@@ -114,9 +114,17 @@ export const useDashboardData = () => {
       // This ensures every chart has a transcription in the DB
       // Wait for charts to render first
       if (dashboardData.charts && dashboardData.charts.length > 0) {
+        console.log(`[Dashboard Startup] 📊 Dashboard loaded with ${dashboardData.charts.length} charts. Will wait 3 seconds for charts to render...`);
         setTimeout(async () => {
           try {
             console.log(`[Dashboard Startup] 🚀 Initial load - sending ${dashboardData.charts.length} charts to OpenAI for transcription...`);
+            console.log(`[Dashboard Startup] 🔍 Checking for chart elements in DOM...`);
+            
+            // 🔍 DEBUG: Check if chart elements exist in DOM
+            const allChartCards = document.querySelectorAll('[data-chart-id]');
+            const allRechartsWrappers = document.querySelectorAll('.recharts-wrapper');
+            console.log(`[Dashboard Startup] Found ${allChartCards.length} chart cards with [data-chart-id] attribute`);
+            console.log(`[Dashboard Startup] Found ${allRechartsWrappers.length} .recharts-wrapper elements`);
             
             const chartsForStartupFill = [];
             
@@ -146,22 +154,47 @@ export const useDashboardData = () => {
                 // The backend will handle signature checking and skip if data hasn't changed
                 console.log(`[Dashboard Startup] Chart ${chartId} will be sent to OpenAI for transcription (first load always creates)`);
                 
-                // Find the chart element
-                let chartElement = document.querySelector(`[data-chart-id="${chartId}"] .recharts-wrapper`);
+                // Find the chart element - try multiple strategies
+                console.log(`[Dashboard Startup] 🔍 Looking for chart element for ${chartId}...`);
                 
-                // Fallback: try to find by chart card
-                if (!chartElement) {
+                let chartElement = null;
+                
+                // Strategy 1: Direct selector
+                chartElement = document.querySelector(`[data-chart-id="${chartId}"] .recharts-wrapper`);
+                if (chartElement) {
+                  console.log(`[Dashboard Startup] ✅ Found chart element for ${chartId} using direct selector`);
+                } else {
+                  // Strategy 2: Find by chart card
                   const chartCard = document.querySelector(`[data-chart-id="${chartId}"]`);
                   if (chartCard) {
                     chartElement = chartCard.querySelector('.recharts-wrapper');
+                    if (chartElement) {
+                      console.log(`[Dashboard Startup] ✅ Found chart element for ${chartId} using chart card`);
+                    }
                   }
                 }
                 
-                // Fallback: try to find by index
+                // Strategy 3: Find by index (fallback)
                 if (!chartElement) {
                   const allChartCards = document.querySelectorAll('[data-chart-id]');
+                  console.log(`[Dashboard Startup] 🔍 Trying fallback - found ${allChartCards.length} chart cards total`);
                   if (allChartCards[i]) {
+                    const cardId = allChartCards[i].getAttribute('data-chart-id');
+                    console.log(`[Dashboard Startup] 🔍 Chart card at index ${i} has id: ${cardId}`);
                     chartElement = allChartCards[i].querySelector('.recharts-wrapper');
+                    if (chartElement) {
+                      console.log(`[Dashboard Startup] ✅ Found chart element for ${chartId} using index fallback`);
+                    }
+                  }
+                }
+                
+                // Strategy 4: Try to find ANY recharts-wrapper if chartId matches
+                if (!chartElement) {
+                  const allWrappers = document.querySelectorAll('.recharts-wrapper');
+                  console.log(`[Dashboard Startup] 🔍 Trying last resort - found ${allWrappers.length} recharts-wrapper elements`);
+                  if (allWrappers[i]) {
+                    chartElement = allWrappers[i];
+                    console.log(`[Dashboard Startup] ✅ Found chart element for ${chartId} using wrapper index fallback`);
                   }
                 }
                 
@@ -209,20 +242,38 @@ export const useDashboardData = () => {
             
             // Send all charts to OpenAI via startup-fill
             // ⚠️ CRITICAL: On first load, we ALWAYS call OpenAI (force=true) to ensure fresh transcriptions
+            console.log(`[Dashboard Startup] 📊 Summary: Prepared ${chartsForStartupFill.length} charts out of ${dashboardData.charts.length} total charts`);
+            
             if (chartsForStartupFill.length > 0) {
               console.log(`[Dashboard Startup] 📤 Sending ${chartsForStartupFill.length} charts to OpenAI via startup-fill (force=true for first load)...`);
+              console.log(`[Dashboard Startup] Chart IDs being sent:`, chartsForStartupFill.map(c => c.chartId));
               
               try {
                 // ⚠️ CRITICAL: force=true ensures OpenAI is called even if transcription exists
                 // This matches the requirement: "after opening the site for the first time, call OpenAI"
-                await chartTranscriptionAPI.startupFill(chartsForStartupFill, true);
+                console.log(`[Dashboard Startup] 🔄 Calling chartTranscriptionAPI.startupFill with force=true...`);
+                const response = await chartTranscriptionAPI.startupFill(chartsForStartupFill, true);
+                console.log(`[Dashboard Startup] ✅ Response received from startup-fill:`, {
+                  ok: response?.data?.ok,
+                  resultsCount: response?.data?.results?.length,
+                  results: response?.data?.results
+                });
                 console.log(`[Dashboard Startup] ✅ All charts sent to OpenAI and saved to DB`);
               } catch (err) {
-                console.error(`[Dashboard Startup] Failed to send charts to OpenAI:`, err);
+                console.error(`[Dashboard Startup] ❌ CRITICAL: Failed to send charts to OpenAI:`, {
+                  message: err.message,
+                  response: err.response?.data,
+                  status: err.response?.status,
+                  stack: err.stack
+                });
                 // Don't fail the whole dashboard load if transcription creation fails
               }
             } else {
-              console.log(`[Dashboard Startup] ⚠️ No charts prepared for transcription (chart elements not found)`);
+              console.error(`[Dashboard Startup] ❌ CRITICAL: No charts prepared for transcription!`);
+              console.error(`[Dashboard Startup] This means chart elements were not found in DOM.`);
+              console.error(`[Dashboard Startup] Total charts in data: ${dashboardData.charts.length}`);
+              console.error(`[Dashboard Startup] Chart IDs in data:`, dashboardData.charts.map(c => c.id || 'no-id'));
+              console.error(`[Dashboard Startup] ⚠️ This is why no POST requests are being made to startup-fill!`);
             }
           } catch (err) {
             console.error('[Dashboard Startup] Failed to process chart transcriptions:', err);
