@@ -20,6 +20,7 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
   const loadedChartIdRef = useRef(null); // Track which chart we loaded
   const loadingRef = useRef(false); // Prevent multiple simultaneous loads
   const retryCountRef = useRef(0); // Track retry attempts
+  const reloadIntervalRef = useRef(null); // Store interval for reloading transcription after creation
 
   useEffect(() => {
     // Ensure consistent chartId - must match the data-chart-id attribute
@@ -125,18 +126,12 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
                 
                 console.log(`[Reports Chart ${chartId}] ✅ Transcription sent to OpenAI and saved to DB`);
                 
-                // Reload transcription from DB after creation (wait for DB to update)
-                // Try multiple times to ensure transcription is loaded
-                let reloadAttempts = 0;
-                const maxReloadAttempts = 5; // Try 5 times (25 seconds total)
-                const reloadInterval = setInterval(async () => {
-                  reloadAttempts++;
-                  console.log(`[Reports Chart ${chartId}] 🔄 Reloading transcription from DB (attempt ${reloadAttempts}/${maxReloadAttempts})...`);
-                  
+                // Function to reload transcription from DB
+                const reloadTranscription = async () => {
                   try {
                     // Load transcription and check if it was loaded
                     const res = await apiQueue.enqueue(
-                      `transcription-${chartId}-reload`,
+                      `transcription-${chartId}-reload-${Date.now()}`, // Unique key to avoid duplicate prevention
                       () => chartTranscriptionAPI.getTranscription(chartId, topic, chartData)
                     );
                     
@@ -144,18 +139,54 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
                     if (loadedText) {
                       console.log(`[Reports Chart ${chartId}] ✅ Transcription loaded from DB (${loadedText.length} chars)`);
                       setTranscriptionText(loadedText);
-                      clearInterval(reloadInterval);
-                    } else if (reloadAttempts >= maxReloadAttempts) {
-                      console.warn(`[Reports Chart ${chartId}] ⚠️ Transcription not loaded after ${maxReloadAttempts} attempts`);
-                      clearInterval(reloadInterval);
+                      // Clear interval if transcription was loaded
+                      if (reloadIntervalRef.current) {
+                        clearInterval(reloadIntervalRef.current);
+                        reloadIntervalRef.current = null;
+                      }
+                      return true; // Success
                     }
+                    return false; // Not loaded yet
                   } catch (err) {
                     console.error(`[Reports Chart ${chartId}] Failed to reload transcription:`, err);
-                    if (reloadAttempts >= maxReloadAttempts) {
-                      clearInterval(reloadInterval);
-                    }
+                    return false; // Error
                   }
-                }, 5000); // Try every 5 seconds
+                };
+                
+                // Try to load immediately (DB might be ready already)
+                console.log(`[Reports Chart ${chartId}] 🔄 Attempting immediate load from DB...`);
+                const immediateSuccess = await reloadTranscription();
+                
+                if (!immediateSuccess) {
+                  // If immediate load failed, start polling with interval
+                  console.log(`[Reports Chart ${chartId}] ⏳ Starting polling for transcription from DB...`);
+                  let reloadAttempts = 0;
+                  const maxReloadAttempts = 10; // Try 10 times (30 seconds total with 3s intervals)
+                  
+                  // Clear any existing interval first
+                  if (reloadIntervalRef.current) {
+                    clearInterval(reloadIntervalRef.current);
+                  }
+                  
+                  reloadIntervalRef.current = setInterval(async () => {
+                    reloadAttempts++;
+                    console.log(`[Reports Chart ${chartId}] 🔄 Reloading transcription from DB (attempt ${reloadAttempts}/${maxReloadAttempts})...`);
+                    
+                    const success = await reloadTranscription();
+                    if (success) {
+                      // Transcription loaded successfully, interval already cleared in reloadTranscription
+                      return;
+                    }
+                    
+                    if (reloadAttempts >= maxReloadAttempts) {
+                      console.warn(`[Reports Chart ${chartId}] ⚠️ Transcription not loaded after ${maxReloadAttempts} attempts`);
+                      if (reloadIntervalRef.current) {
+                        clearInterval(reloadIntervalRef.current);
+                        reloadIntervalRef.current = null;
+                      }
+                    }
+                  }, 3000); // Try every 3 seconds (faster than before)
+                }
               } else {
                 console.warn(`[Reports Chart ${chartId}] Chart element not found, cannot create transcription`);
               }
@@ -250,6 +281,11 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
       loadedChartIdRef.current = null;
       retryCountRef.current = 0; // Reset retry count
       loadingRef.current = false; // Reset loading flag
+      // Clear any existing reload interval
+      if (reloadIntervalRef.current) {
+        clearInterval(reloadIntervalRef.current);
+        reloadIntervalRef.current = null;
+      }
     }
     
     // Always load transcription from DB when chart is displayed
@@ -284,6 +320,11 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
     return () => {
       clearTimeout(timer);
       window.removeEventListener('reportTranscriptionsRefreshed', handleRefreshEvent);
+      // Clear reload interval if it exists
+      if (reloadIntervalRef.current) {
+        clearInterval(reloadIntervalRef.current);
+        reloadIntervalRef.current = null;
+      }
       // Reset loading flag when component unmounts
       loadingRef.current = false;
     };
