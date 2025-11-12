@@ -65,7 +65,18 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           () => chartTranscriptionAPI.getTranscription(chartId, topic, chartData)
         );
         
+        // Debug: Log the response structure
+        console.log(`[Reports Chart ${chartId}] Response structure:`, {
+          hasRes: !!res,
+          hasData: !!res?.data,
+          hasDataData: !!res?.data?.data,
+          text: res?.data?.data?.text,
+          notFound: res?.data?.data?.notFound,
+          fullResponse: res
+        });
+        
         // Handle response - could be from queue (404 handled) or direct API call
+        // The API returns: { data: { data: { text: string } } }
         const dbTranscriptionText = res?.data?.data?.text || null;
         const isNotFound = res?.data?.data?.notFound === true;
         
@@ -173,14 +184,14 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
       loadingRef.current = false; // Reset loading flag
     }
     
-    // Only load if we haven't loaded this chart yet
+    // Only load if we haven't loaded this chart yet OR if we loaded but got empty result
     if (loadedChartIdRef.current === chartId && transcriptionText) {
-      // Already loaded this chart, skip
+      // Already loaded this chart with text, skip
       return () => {};
     }
     
     // Wait a bit for chart to render, then load from DB
-    // Increased delay to prevent multiple simultaneous loads
+    // Reduced delay to load faster
     const timer = setTimeout(() => {
       // Double-check we still need to load (chart might have changed)
       if (loadedChartIdRef.current !== chartId || !transcriptionText) {
@@ -189,7 +200,7 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           loadTranscriptionFromDB();
         }
       }
-    }, 3000); // Increased delay to prevent rate limiting
+    }, 1000); // Reduced delay to load faster
 
     // Listen for refresh event from dashboard
     const handleRefreshEvent = () => {

@@ -187,7 +187,8 @@ class APIQueue {
             // 404 is NOT a failure - it means no transcription exists (expected state)
             if (error.response?.status === 404) {
               // Don't record as failure - 404 is expected when transcription doesn't exist
-              // Return result that indicates no transcription found
+              // Return result that matches the API response structure
+              // API returns: { data: { data: { text: string } } }
               result = { 
                 data: { 
                   data: { 
@@ -196,6 +197,7 @@ class APIQueue {
                   } 
                 } 
               };
+              console.log(`[APIQueue] 404 for "${request.key}" - returning empty result`);
               // Don't record as success or failure - 404 is neutral
               break;
             }
@@ -215,12 +217,15 @@ class APIQueue {
           }
         }
 
-        if (result) {
+        if (result !== undefined) {
+          // Result can be null (for 404) - that's valid
           request.resolve(result);
           this.pendingRequests.delete(request.key);
           this.failedRequests.delete(request.key); // Remove from failed list on success
+          console.log(`[APIQueue] Request "${request.key}" completed successfully`);
         } else {
           // All retries failed
+          console.error(`[APIQueue] Request "${request.key}" failed after all retries`);
           this.recordFailure();
           this.failedRequests.set(request.key, Date.now());
           request.reject(lastError);
