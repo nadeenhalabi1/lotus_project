@@ -387,7 +387,8 @@ export const useDashboardData = () => {
           try {
             console.log(`[Dashboard Refresh] Refreshing transcriptions for ${dashboardData.charts.length} charts...`);
             
-            // Refresh transcriptions for all charts
+            // Capture all chart images
+            const chartsForRefresh = [];
             for (let i = 0; i < dashboardData.charts.length; i++) {
               const chart = dashboardData.charts[i];
               const chartId = chart.id || `chart-${i}`;
@@ -416,32 +417,35 @@ export const useDashboardData = () => {
                   // Capture chart image
                   const canvas = await html2canvas(chartElement, {
                     backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
-                    scale: 1,
+                    scale: 0.5, // Reduced scale to reduce image size and token count
                     logging: false,
                     useCORS: true
                   });
                   
                   const imageUrl = canvas.toDataURL('image/png');
-                  const topic = `${chart.title || chartId}`;
+                  const context = `${chart.title || chartId}`;
                   
-                  // Refresh transcription via OpenAI (overwrites old one in DB)
-                  // ⚠️ CRITICAL: After POST refresh, we MUST fetch from DB (GET) - never display POST response directly
-                  // This ensures we always show what's in the DB, not the OpenAI response
-                  await chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, chart.data || {}, true);
-                  
-                  // Wait a moment for DB to be updated
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                  
-                  // 🔄 CRITICAL: Always fetch from DB after POST refresh - never display POST response directly
-                  // This ensures we always show what's in the DB (single source of truth)
-                  // Note: The transcription will be displayed when Reports page loads it from DB
-                  console.log(`[Dashboard Refresh] Chart ${chartId} transcription refreshed and saved to DB`);
-                } else {
-                  console.warn(`[Dashboard Refresh] Chart element not found for ${chartId}, skipping transcription refresh`);
+                  chartsForRefresh.push({
+                    chartId,
+                    imageUrl,
+                    context
+                  });
                 }
               } catch (err) {
-                console.error(`[Dashboard Refresh] Failed to refresh transcription for ${chartId}:`, err);
-                // Continue with other charts even if one fails
+                console.error(`[Dashboard Refresh] Failed to capture chart ${chartId}:`, err);
+              }
+            }
+            
+            // Call /refresh endpoint - processes charts sequentially, always overwrites
+            if (chartsForRefresh.length > 0) {
+              console.log(`[Dashboard Refresh] Sending ${chartsForRefresh.length} charts to /refresh endpoint...`);
+              const { data } = await chartTranscriptionAPI.refresh(chartsForRefresh);
+              console.log(`[Dashboard Refresh] ✅ Refresh completed:`, data);
+              
+              if (data.results) {
+                const updated = data.results.filter(r => r.status === 'updated').length;
+                const errors = data.results.filter(r => r.status === 'error').length;
+                console.log(`[Dashboard Refresh] Results: ${updated} updated, ${errors} errors`);
               }
             }
             
