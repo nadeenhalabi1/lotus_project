@@ -29,8 +29,9 @@ export const securityConfig = {
   // Rate Limiting
   rateLimit: {
     windowMs: 15 * 60 * 1000, // 15 minutes
-    // In development, allow more requests to prevent 429 errors during testing
-    max: process.env.NODE_ENV === 'development' ? 1000 : 100 // limit each IP to requests per windowMs
+    // Increased from 100 to 2000 to allow chart transcription workflows
+    // Frontend makes multiple requests for charts, transcriptions, etc.
+    max: process.env.NODE_ENV === 'development' ? 2000 : 2000 // limit each IP to requests per windowMs
   },
 
   // Data Retention
