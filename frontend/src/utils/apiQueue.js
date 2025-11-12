@@ -81,11 +81,16 @@ class APIQueue {
    * @returns {Promise}
    */
   async enqueue(key, requestFn) {
-    // Check circuit breaker
+    // Check circuit breaker - but allow requests if enough time has passed
     if (this.checkCircuitBreaker()) {
       const waitTime = this.circuitBreaker.resetTimeout - (Date.now() - this.circuitBreaker.lastFailureTime);
-      console.warn(`[APIQueue] Circuit breaker is OPEN - request "${key}" will be rejected. Wait ${Math.ceil(waitTime / 1000)}s`);
-      return Promise.reject(new Error(`Circuit breaker is open. Please wait ${Math.ceil(waitTime / 1000)} seconds.`));
+      if (waitTime > 0) {
+        console.warn(`[APIQueue] Circuit breaker is OPEN - request "${key}" will be rejected. Wait ${Math.ceil(waitTime / 1000)}s`);
+        return Promise.reject(new Error(`Circuit breaker is open. Please wait ${Math.ceil(waitTime / 1000)} seconds.`));
+      } else {
+        // Time has passed, reset circuit breaker
+        this.resetCircuitBreaker();
+      }
     }
 
     // If same request is already pending, return the existing promise

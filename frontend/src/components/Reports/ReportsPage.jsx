@@ -133,11 +133,26 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
             // Don't retry immediately - wait for user action or page refresh
           }
         } else if (error.message?.includes('Circuit breaker')) {
-          // Circuit breaker is open - don't treat as error, just wait
-          console.log(`[Reports Chart ${chartId}] ⚠️ Circuit breaker is open, will retry later`);
-          setTranscriptionText(''); // Clear
-          retryCountRef.current = 0;
-          loadedChartIdRef.current = chartId; // Mark as attempted
+          // Circuit breaker is open - retry after delay
+          const maxRetries = 2;
+          if (retryCountRef.current < maxRetries) {
+            retryCountRef.current += 1;
+            const delay = retryCountRef.current === 1 ? 10000 : 20000; // 10s, 20s
+            console.log(`[Reports Chart ${chartId}] ⚠️ Circuit breaker is open, will retry in ${delay}ms (attempt ${retryCountRef.current}/${maxRetries})...`);
+            
+            loadingRef.current = false;
+            setLoading(false);
+            
+            setTimeout(() => {
+              loadTranscriptionFromDB(true);
+            }, delay);
+            return;
+          } else {
+            console.log(`[Reports Chart ${chartId}] ⚠️ Circuit breaker still open after ${maxRetries} retries - will try again later`);
+            setTranscriptionText(''); // Clear
+            retryCountRef.current = 0;
+            loadedChartIdRef.current = chartId; // Mark as attempted
+          }
         } else {
           console.error(`[Reports Chart ${chartId}] ❌ Error fetching transcription_text from DB:`, error);
           setTranscriptionText(''); // Clear on error
