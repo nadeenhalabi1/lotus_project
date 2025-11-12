@@ -261,7 +261,17 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
     console.log(`[startup-fill] Processing ${charts.length} charts... (force=${force})`);
     const results = [];
     
-    for (const c of charts) {
+    // ⚠️ CRITICAL: Process charts ONE AT A TIME to avoid rate limits
+    // OpenAI has a limit of 30K tokens per minute, and multiple large images can exceed this
+    for (let i = 0; i < charts.length; i++) {
+      const c = charts[i];
+      
+      // Add delay between charts to avoid rate limits (except for first chart)
+      if (i > 0) {
+        const delayMs = 2000; // 2 seconds between charts
+        console.log(`[startup-fill] Waiting ${delayMs}ms before processing chart ${i + 1}/${charts.length} to avoid rate limits...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
       const { chartId, topic, chartData, imageUrl, model = 'gpt-4o-mini' } = c || {};
       
       if (!chartId || !imageUrl) {
