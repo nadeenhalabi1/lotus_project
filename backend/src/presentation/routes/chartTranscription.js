@@ -425,37 +425,11 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
         console.log(`[startup-fill] Chart ${chartId} 💾 DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
         
         try {
-          const savedText = await upsertTranscription({ chartId, signature, text, model });
-          console.log(`[startup-fill] Chart ${chartId} ✅✅✅ TRANSCRIPTION SAVED TO DB SUCCESSFULLY!`);
-          console.log(`[startup-fill] Chart ${chartId} ✅ Saved text length: ${savedText?.length || 0} chars`);
-          console.log(`[AI Save] ✅✅✅ Saved transcription to DB for ${chartId} (startup-fill)`);
-          
-          // Verify the transcription was saved by reading it back from DB
-          try {
-            const verify = await getTranscriptionByChartId(chartId);
-            if (verify && verify.transcription_text === text) {
-              console.log(`[startup-fill] Chart ${chartId} ✅ Verified: Transcription matches what was saved`);
-            } else {
-              console.error(`[startup-fill] Chart ${chartId} ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
-              console.error(`[startup-fill] Chart ${chartId} Original text length: ${text?.length || 0}`);
-              console.error(`[startup-fill] Chart ${chartId} DB text length: ${verify?.transcription_text?.length || 0}`);
-            }
-          } catch (verifyErr) {
-            console.error(`[startup-fill] Chart ${chartId} ⚠️ Could not verify transcription in DB:`, verifyErr.message);
-            console.error(`[startup-fill] Chart ${chartId} Verification error stack:`, verifyErr.stack);
-          }
-          
-          results.push({ chartId, status: 'updated', signature });
+          await upsertTranscription({ chartId, signature, text, model });
+          results.push({ chartId, status: 'updated', signature, transcription_text: text });
         } catch (saveErr) {
-          console.error(`[startup-fill] Chart ${chartId} ❌ CRITICAL: Failed to save transcription to DB:`, saveErr.message);
-          console.error(`[startup-fill] Chart ${chartId} Save error code:`, saveErr.code);
-          console.error(`[startup-fill] Chart ${chartId} Save error detail:`, saveErr.detail);
-          console.error(`[startup-fill] Chart ${chartId} Save error hint:`, saveErr.hint);
-          console.error(`[startup-fill] Chart ${chartId} Save error stack:`, saveErr.stack);
           results.push({ chartId, status: 'error', error: `Failed to save to DB: ${saveErr.message}` });
-          // ⚠️ CRITICAL: Don't throw - continue with other charts, but log the error
-          // The error is already logged above, and we want to process all charts
-          // Don't throw saveErr - this would stop processing other charts
+          // Continue to next chart even if this one failed
         }
       } catch (err) {
         console.error(`[startup-fill] Error for chart ${chartId}:`, {

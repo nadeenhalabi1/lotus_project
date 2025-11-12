@@ -219,7 +219,7 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o-
   try {
     const pool = getPool();
     
-    // Prepare safe parameters
+    // Prepare safe parameters - ensure they're strings and not null/undefined
     const safeChartId = String(chartId || '').trim();
     const safeSignature = String(signature || '').trim();
     const safeModel = String(model || 'gpt-4o-mini').trim();
@@ -229,32 +229,8 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o-
       throw new Error('chartId is required and cannot be empty');
     }
     
-    // 🔍 DEBUG: Log all parameters before query
-    console.log(`[upsertTranscription] 📝 Query parameters:`, {
-      chartId,
-      signature: signature?.substring(0, 16) + '...',
-      model,
-      textLength: text?.length || 0,
-      textPreview: text?.substring(0, 100) + '...'
-    });
-    
-    // ⚠️ CRITICAL: Ensure all parameters are valid strings (not null/undefined)
-    const safeChartId = String(chartId || '').trim();
-    const safeSignature = String(signature || '').trim();
-    const safeModel = String(model || 'gpt-4o').trim();
-    const safeText = String(text || '').trim();
-    
-    if (!safeChartId) {
-      throw new Error('chartId is required and cannot be empty');
-    }
-    
-    console.log(`[upsertTranscription] 🔍 Prepared safe parameters:`, {
-      chartId: safeChartId,
-      signature: safeSignature.substring(0, 16) + '...',
-      model: safeModel,
-      textLength: safeText.length
-    });
-    
+    // ⚠️ CRITICAL: Execute INSERT query directly - no blocking checks
+    // The query itself will fail if table doesn't exist or connection is bad
     const query = `INSERT INTO ai_chart_transcriptions 
        (chart_id, chart_signature, model, transcription_text, created_at, updated_at)
        VALUES ($1, $2, $3, $4, NOW(), NOW())
@@ -266,89 +242,14 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o-
          updated_at = NOW()
        RETURNING chart_id, chart_signature, model, transcription_text, created_at, updated_at`;
     
-    console.log(`[upsertTranscription] 🔍 Executing query with safe params:`, {
-      $1: safeChartId,
-      $2: safeSignature.substring(0, 16) + '...',
-      $3: safeModel,
-      $4: `[${safeText.length} chars]`
-    });
-    
-    // ⚠️ CRITICAL: Execute query and log EVERYTHING
-    console.log(`[upsertTranscription] 🔍 About to execute query for ${safeChartId}...`);
-    console.log(`[upsertTranscription] Query: ${query.substring(0, 100)}...`);
-    
     // Use retry with backoff for transient errors
-    let result;
-    try {
-      result = await withRetry(async () => {
-        return await pool.query(query, [safeChartId, safeSignature, safeModel, safeText]);
-      }, 3);
-      console.log(`[upsertTranscription] ✅ Query executed successfully for ${safeChartId}`);
-    } catch (queryErr) {
-      console.error(`[upsertTranscription] ❌ Query execution FAILED for ${chartId}:`, {
-        message: queryErr.message,
-        code: queryErr.code,
-        detail: queryErr.detail,
-        hint: queryErr.hint,
-        stack: queryErr.stack
-      });
-      throw queryErr; // Re-throw to be caught by outer catch
-    }
-    
-    console.log(`[upsertTranscription] 🔍 Query executed. Result:`, {
-      hasResult: !!result,
-      hasRows: !!(result?.rows),
-      rowCount: result?.rows?.length || 0,
-      resultType: typeof result,
-      resultKeys: result ? Object.keys(result) : []
-    });
+    const result = await withRetry(async () => {
+      return await pool.query(query, [safeChartId, safeSignature, safeModel, safeText]);
+    }, 3);
     
     if (result && result.rows && result.rows.length > 0) {
-      const row = result.rows[0];
-      console.log(`[upsertTranscription] ✅✅✅ SUCCESS: Upserted transcription for ${chartId} to DB!`);
-      console.log(`[upsertTranscription] ✅ Row details:`, {
-        chart_id: row.chart_id,
-        chart_signature: row.chart_signature?.substring(0, 16) + '...',
-        model: row.model,
-        transcription_text_length: row.transcription_text?.length || 0,
-        transcription_text_preview: row.transcription_text?.substring(0, 100) + '...',
-        created_at: row.created_at,
-        updated_at: row.updated_at
-      });
-      console.log(`[upsertTranscription] ✅ Updated at: ${row.updated_at}`);
-      console.log(`[upsertTranscription] ✅ Text length in DB: ${row.transcription_text?.length || 0} chars`);
-      
-      // Verify the text was actually saved
-      if (row.transcription_text !== text) {
-        console.error(`[upsertTranscription] ⚠️ WARNING: Text mismatch! Sent ${text?.length || 0} chars, but DB has ${row.transcription_text?.length || 0} chars`);
-        console.error(`[upsertTranscription] First 100 chars sent: ${text?.substring(0, 100)}`);
-        console.error(`[upsertTranscription] First 100 chars in DB: ${row.transcription_text?.substring(0, 100)}`);
-      } else {
-        console.log(`[upsertTranscription] ✅✅✅ VERIFIED: Text matches what was saved to DB!`);
-      }
-      
-      // ⚠️ CRITICAL: Verify by reading back from DB immediately
-      try {
-        console.log(`[upsertTranscription] 🔍 Verifying DB write by reading back from DB...`);
-        const verify = await getTranscriptionByChartId(chartId);
-        if (verify && verify.transcription_text === text) {
-          console.log(`[upsertTranscription] ✅✅✅ DB VERIFICATION SUCCESS: Transcription confirmed in DB for ${chartId}`);
-          console.log(`[upsertTranscription] ✅ Verified text length: ${verify.transcription_text?.length || 0} chars`);
-        } else {
-          console.error(`[upsertTranscription] ❌❌❌ DB VERIFICATION FAILED: Transcription NOT found or mismatch for ${chartId}`);
-          console.error(`[upsertTranscription] Expected length: ${text?.length || 0}, Found length: ${verify?.transcription_text?.length || 0}`);
-        }
-      } catch (verifyErr) {
-        console.error(`[upsertTranscription] ❌ Could not verify DB write:`, verifyErr.message);
-      }
-      
-      // Return the saved transcription text for verification
-      return row.transcription_text;
+      return result.rows[0].transcription_text;
     } else {
-      console.error(`[upsertTranscription] ⚠️ CRITICAL: No rows returned from upsert for ${chartId}!`);
-      console.error(`[upsertTranscription] Result object:`, result);
-      console.error(`[upsertTranscription] Result type:`, typeof result);
-      console.error(`[upsertTranscription] Result keys:`, result ? Object.keys(result) : 'null');
       throw new Error(`Failed to save transcription to DB - no rows returned`);
     }
   } catch (err) {

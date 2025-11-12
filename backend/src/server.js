@@ -55,30 +55,42 @@ app.use('/api/v1/health', healthRoutes);
 app.use(errorHandler);
 
 // Start server
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   
-  // Run database migration (if DATABASE_URL is set)
-  await runMigration();
-  
-  // Test database connection on boot
-  if (process.env.DATABASE_URL) {
+  // ⚠️ CRITICAL: Run initialization in background - don't block server startup
+  // Railway healthcheck needs server to respond immediately
+  (async () => {
     try {
-      const { healthCheck } = await import('./infrastructure/db/pool.js');
-      const health = await healthCheck();
-      if (health.ok) {
-        console.log('[DB] ✅ Database connection healthy');
-      } else {
-        console.error('[DB] ❌ Database connection failed:', health.error);
-      }
-    } catch (err) {
-      console.error('[DB] ❌ Database health check error:', err.message);
+      // Run database migration (if DATABASE_URL is set) - non-blocking
+      await runMigration();
+    } catch (migrationErr) {
+      console.error('[Startup] Migration error (non-fatal):', migrationErr.message);
     }
-  }
-  
-  // Initialize scheduled jobs (async - loads initial mock data in development)
-  await initializeJobs();
+    
+    // Test database connection on boot - non-blocking
+    if (process.env.DATABASE_URL) {
+      try {
+        const { healthCheck } = await import('./infrastructure/db/pool.js');
+        const health = await healthCheck();
+        if (health.ok) {
+          console.log('[DB] ✅ Database connection healthy');
+        } else {
+          console.error('[DB] ❌ Database connection failed:', health.error);
+        }
+      } catch (err) {
+        console.error('[DB] ❌ Database health check error:', err.message);
+      }
+    }
+    
+    // Initialize scheduled jobs (async - loads initial mock data in development) - non-blocking
+    try {
+      await initializeJobs();
+    } catch (jobsErr) {
+      console.error('[Startup] Jobs initialization error (non-fatal):', jobsErr.message);
+    }
+  })();
 });
 
 export default app;
