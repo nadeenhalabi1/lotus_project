@@ -6,6 +6,7 @@ import reportsRoutes from './presentation/routes/reports.js';
 import dataRoutes from './presentation/routes/data.js';
 import openaiRoutes from './presentation/routes/openai.js';
 import chartTranscriptionRoutes from './presentation/routes/chartTranscription.js';
+import healthRoutes from './presentation/routes/health.js';
 import { errorHandler } from './presentation/middleware/errorHandler.js';
 import { auditMiddleware } from './presentation/middleware/auditMiddleware.js';
 import { securityConfig } from './config/security.js';
@@ -48,6 +49,7 @@ app.use('/api/v1/reports', reportsRoutes);
 app.use('/api/v1/data', dataRoutes);
 app.use('/api/v1/openai', openaiRoutes);
 app.use('/api/v1/ai', chartTranscriptionRoutes);
+app.use('/api/v1/health', healthRoutes);
 
 // Error handling
 app.use(errorHandler);
@@ -59,6 +61,21 @@ app.listen(PORT, async () => {
   
   // Run database migration (if DATABASE_URL is set)
   await runMigration();
+  
+  // Test database connection on boot
+  if (process.env.DATABASE_URL) {
+    try {
+      const { healthCheck } = await import('./infrastructure/db/pool.js');
+      const health = await healthCheck();
+      if (health.ok) {
+        console.log('[DB] ✅ Database connection healthy');
+      } else {
+        console.error('[DB] ❌ Database connection failed:', health.error);
+      }
+    } catch (err) {
+      console.error('[DB] ❌ Database health check error:', err.message);
+    }
+  }
   
   // Initialize scheduled jobs (async - loads initial mock data in development)
   await initializeJobs();

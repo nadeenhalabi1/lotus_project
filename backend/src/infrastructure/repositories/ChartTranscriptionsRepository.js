@@ -1,38 +1,10 @@
 // ESM module (no CommonJS)
-import pkg from 'pg';
-const { Pool } = pkg;
+import { getPool, withRetry } from '../db/pool.js';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
   console.warn('[ChartTranscriptionsRepository] Missing DATABASE_URL env');
-}
-
-// Connection pool for better performance
-let pool = null;
-
-function getPool() {
-  if (!DATABASE_URL) {
-    throw new Error('DATABASE_URL not available');
-  }
-  
-  if (!pool) {
-    pool = new Pool({
-      connectionString: DATABASE_URL,
-      ssl: { rejectUnauthorized: false }, // Required for Supabase/PostgreSQL
-      max: 10, // Maximum number of clients in the pool
-      idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-      connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
-    });
-    
-    pool.on('error', (err) => {
-      console.error('[ChartTranscriptionsRepository] Unexpected pool error:', err);
-    });
-    
-    console.log('[ChartTranscriptionsRepository] Database pool created');
-  }
-  
-  return pool;
 }
 
 // Export for compatibility (not used, but routes check it)
@@ -123,21 +95,18 @@ export async function getTranscriptionByChartId(chartId) {
   }
   
   try {
-    console.log(`[getTranscriptionByChartId] 🔍 Getting pool for ${chartId}...`);
     const pool = getPool();
-    if (!pool) {
-      console.error(`[getTranscriptionByChartId] ❌ Pool is null for ${chartId}`);
-      throw new Error('Database pool not available');
-    }
     
-    console.log(`[getTranscriptionByChartId] 🔍 Executing query for ${chartId}...`);
-    const result = await pool.query(
-      `SELECT chart_id, chart_signature, model, transcription_text, updated_at 
-       FROM ai_chart_transcriptions 
-       WHERE chart_id = $1 
-       LIMIT 1`,
-      [chartId]
-    );
+    // Use retry with backoff for transient errors
+    const result = await withRetry(async () => {
+      return await pool.query(
+        `SELECT chart_id, chart_signature, model, transcription_text, updated_at 
+         FROM ai_chart_transcriptions 
+         WHERE chart_id = $1 
+         LIMIT 1`,
+        [chartId]
+      );
+    }, 3);
     
     console.log(`[getTranscriptionByChartId] ✅ Query executed for ${chartId}, rows: ${result.rows.length}`);
     
@@ -294,10 +263,12 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
     console.log(`[upsertTranscription] 🔍 About to execute query for ${safeChartId}...`);
     console.log(`[upsertTranscription] Query: ${query.substring(0, 100)}...`);
     
+    // Use retry with backoff for transient errors
     let result;
     try {
-      // ⚠️ CRITICAL: Use safe parameters to ensure no null/undefined values
-      result = await pool.query(query, [safeChartId, safeSignature, safeModel, safeText]);
+      result = await withRetry(async () => {
+        return await pool.query(query, [safeChartId, safeSignature, safeModel, safeText]);
+      }, 3);
       console.log(`[upsertTranscription] ✅ Query executed successfully for ${safeChartId}`);
     } catch (queryErr) {
       console.error(`[upsertTranscription] ❌ Query execution FAILED for ${chartId}:`, {

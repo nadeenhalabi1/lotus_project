@@ -68,12 +68,16 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
       hint: err.hint
     });
     
-    // Return 500 with error message
-    res.status(500).json({ 
+    // Check if it's a connection/timeout error - return 503 instead of 500
+    const isConnectionError = /timeout|ECONNRESET|ETIMEDOUT|terminat|connection/i.test(err?.message || '');
+    const statusCode = isConnectionError ? 503 : 500;
+    
+    // Return 503 for connection errors, 500 for other DB errors
+    res.status(statusCode).json({ 
       exists: false,
       transcription_text: null,
       chartId,
-      error: err?.message || 'DB error',
+      error: isConnectionError ? 'Database connection error' : (err?.message || 'DB error'),
       errorCode: err?.code,
       errorDetail: err?.detail,
       errorHint: err?.hint,
