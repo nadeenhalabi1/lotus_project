@@ -374,24 +374,53 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
           results.push({ chartId, status: 'updated', signature });
         } catch (saveErr) {
           console.error(`[startup-fill] Chart ${chartId} ❌ CRITICAL: Failed to save transcription to DB:`, saveErr.message);
+          console.error(`[startup-fill] Chart ${chartId} Save error code:`, saveErr.code);
+          console.error(`[startup-fill] Chart ${chartId} Save error detail:`, saveErr.detail);
+          console.error(`[startup-fill] Chart ${chartId} Save error hint:`, saveErr.hint);
           console.error(`[startup-fill] Chart ${chartId} Save error stack:`, saveErr.stack);
           results.push({ chartId, status: 'error', error: `Failed to save to DB: ${saveErr.message}` });
-          // Don't continue - this is a critical error
-          throw saveErr;
+          // ⚠️ CRITICAL: Don't throw - continue with other charts, but log the error
+          // The error is already logged above, and we want to process all charts
+          // Don't throw saveErr - this would stop processing other charts
         }
       } catch (err) {
         console.error(`[startup-fill] Error for chart ${chartId}:`, {
           message: err.message,
+          code: err.code,
+          detail: err.detail,
+          hint: err.hint,
           stack: err.stack
         });
         results.push({ chartId, status: 'error', error: err.message });
+        // ⚠️ CRITICAL: Don't throw - continue with other charts
+        // The error is already logged above
       }
     }
 
     console.log(`[startup-fill] Completed: ${results.length} charts processed`);
+    console.log(`[startup-fill] Results summary:`, {
+      total: results.length,
+      updated: results.filter(r => r.status === 'updated').length,
+      fromDb: results.filter(r => r.status === 'from-db').length,
+      errors: results.filter(r => r.status === 'error').length,
+      skipInvalid: results.filter(r => r.status === 'skip-invalid').length
+    });
+    
+    // ⚠️ CRITICAL: Log any errors
+    const errors = results.filter(r => r.status === 'error');
+    if (errors.length > 0) {
+      console.error(`[startup-fill] ⚠️ WARNING: ${errors.length} charts failed:`, errors);
+    }
+    
     res.json({ ok: true, results });
   } catch (err) {
-    console.error('[startup-fill] Fatal error:', err);
+    console.error('[startup-fill] Fatal error:', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint,
+      stack: err.stack
+    });
     res.status(500).json({ 
       ok: false, 
       error: err?.message || 'AI/DB error' 

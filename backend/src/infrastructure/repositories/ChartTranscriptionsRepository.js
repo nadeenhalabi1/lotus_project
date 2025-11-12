@@ -252,12 +252,32 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
       $4: `[${text?.length || 0} chars]`
     });
     
-    const result = await pool.query(query, [chartId, signature || '', model, text || '']);
+    // ⚠️ CRITICAL: Execute query and log EVERYTHING
+    console.log(`[upsertTranscription] 🔍 About to execute query for ${chartId}...`);
+    console.log(`[upsertTranscription] Query: ${query.substring(0, 100)}...`);
+    console.log(`[upsertTranscription] Params: chartId=${chartId}, signature=${signature?.substring(0, 16)}..., model=${model}, textLength=${text?.length || 0}`);
+    
+    let result;
+    try {
+      result = await pool.query(query, [chartId, signature || '', model, text || '']);
+      console.log(`[upsertTranscription] ✅ Query executed successfully for ${chartId}`);
+    } catch (queryErr) {
+      console.error(`[upsertTranscription] ❌ Query execution FAILED for ${chartId}:`, {
+        message: queryErr.message,
+        code: queryErr.code,
+        detail: queryErr.detail,
+        hint: queryErr.hint,
+        stack: queryErr.stack
+      });
+      throw queryErr; // Re-throw to be caught by outer catch
+    }
     
     console.log(`[upsertTranscription] 🔍 Query executed. Result:`, {
       hasResult: !!result,
       hasRows: !!(result?.rows),
-      rowCount: result?.rows?.length || 0
+      rowCount: result?.rows?.length || 0,
+      resultType: typeof result,
+      resultKeys: result ? Object.keys(result) : []
     });
     
     if (result && result.rows && result.rows.length > 0) {
