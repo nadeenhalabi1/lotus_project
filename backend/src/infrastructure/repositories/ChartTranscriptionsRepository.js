@@ -115,18 +115,31 @@ export async function saveTranscription(chartId, signature, model, text) {
  * Get by chart_id only (no signature)
  */
 export async function getTranscriptionByChartId(chartId) {
+  console.log(`[getTranscriptionByChartId] 🔍 Starting query for ${chartId}...`);
+  
   if (!DATABASE_URL) {
+    console.error(`[getTranscriptionByChartId] ❌ DATABASE_URL not available for ${chartId}`);
     throw new Error('DATABASE_URL not available');
   }
   
   try {
-    const result = await getPool().query(
+    console.log(`[getTranscriptionByChartId] 🔍 Getting pool for ${chartId}...`);
+    const pool = getPool();
+    if (!pool) {
+      console.error(`[getTranscriptionByChartId] ❌ Pool is null for ${chartId}`);
+      throw new Error('Database pool not available');
+    }
+    
+    console.log(`[getTranscriptionByChartId] 🔍 Executing query for ${chartId}...`);
+    const result = await pool.query(
       `SELECT chart_id, chart_signature, model, transcription_text, updated_at 
        FROM ai_chart_transcriptions 
        WHERE chart_id = $1 
        LIMIT 1`,
       [chartId]
     );
+    
+    console.log(`[getTranscriptionByChartId] ✅ Query executed for ${chartId}, rows: ${result.rows.length}`);
     
     if (result.rows.length === 0) {
       console.log(`[getTranscriptionByChartId] No row found for ${chartId}`);
@@ -143,17 +156,25 @@ export async function getTranscriptionByChartId(chartId) {
       updated_at: row.updated_at
     };
   } catch (err) {
-    console.error(`[getTranscriptionByChartId] Database error for ${chartId}:`, {
+    console.error(`[getTranscriptionByChartId] ❌ CRITICAL Database error for ${chartId}:`, {
       message: err.message,
       code: err.code,
       detail: err.detail,
-      hint: err.hint
+      hint: err.hint,
+      name: err.name,
+      stack: err.stack
     });
     
     // Check if table doesn't exist
     if (err.code === '42P01') {
       console.error(`[getTranscriptionByChartId] Table 'ai_chart_transcriptions' does not exist! Run migration first.`);
       throw new Error('Database table does not exist. Please run migration.');
+    }
+    
+    // Check if connection error
+    if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.message?.includes('connection')) {
+      console.error(`[getTranscriptionByChartId] ❌ Connection error for ${chartId}:`, err.message);
+      throw new Error(`Database connection error: ${err.message}`);
     }
     
     throw new Error(`Database error: ${err.message}`);

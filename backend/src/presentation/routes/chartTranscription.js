@@ -59,11 +59,13 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
     });
   } catch (err) {
     // Log full error details for debugging
-    console.error(`[GET /chart-transcription/${chartId}] Error:`, {
+    console.error(`[GET /chart-transcription/${chartId}] ❌ CRITICAL Error:`, {
       message: err.message,
       stack: err.stack,
       name: err.name,
-      code: err.code
+      code: err.code,
+      detail: err.detail,
+      hint: err.hint
     });
     
     // Return 500 with error message
@@ -72,6 +74,9 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
       transcription_text: null,
       chartId,
       error: err?.message || 'DB error',
+      errorCode: err?.code,
+      errorDetail: err?.detail,
+      errorHint: err?.hint,
       details: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
   }
