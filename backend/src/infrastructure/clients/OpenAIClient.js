@@ -23,7 +23,7 @@ export class OpenAIClient extends IAIService {
       const prompt = this.generatePrompt(reportType, data);
 
       const response = await this.client.chat.completions.create({
-        model: 'gpt-4-turbo-preview',
+        model: 'gpt-4o-mini', // Changed from gpt-4-turbo-preview to reduce token usage and prevent rate limits
         messages: [
           {
             role: 'system',
