@@ -5,10 +5,10 @@ export class OpenAIClient extends IAIService {
   constructor() {
     super();
     // MOCK MODE - If no API key, use mock responses
-    this.useMock = !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === '';
+    this.useMock = !process.env.OPENAI_KEY || process.env.OPENAI_KEY === '';
     if (!this.useMock) {
       this.client = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY
+        apiKey: process.env.OPENAI_KEY
       });
     }
   }

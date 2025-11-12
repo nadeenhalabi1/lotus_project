@@ -1,11 +1,11 @@
 import OpenAI from 'openai';
 
-if (!process.env.OPENAI_KEY && !process.env.OPENAI_API_KEY) {
-  console.warn('[transcribeChartService] Missing OPENAI_KEY or OPENAI_API_KEY');
+if (!process.env.OPENAI_KEY) {
+  console.warn('[transcribeChartService] Missing OPENAI_KEY');
 }
 
-const openai = (process.env.OPENAI_KEY || process.env.OPENAI_API_KEY)
-  ? new OpenAI({ apiKey: process.env.OPENAI_KEY || process.env.OPENAI_API_KEY })
+const openai = process.env.OPENAI_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_KEY })
   : null;
 
 const SYSTEM_PROMPT = `

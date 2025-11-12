@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 
-if (!process.env.OPENAI_KEY && !process.env.OPENAI_API_KEY) {
-  console.warn('Warning: OPENAI_KEY or OPENAI_API_KEY not set. Chart narration will use mock mode.');
+if (!process.env.OPENAI_KEY) {
+  console.warn('Warning: OPENAI_KEY not set. Chart narration will use mock mode.');
 }
 
 const MODEL_PRIMARY = 'gpt-4o';      // best quality
@@ -20,7 +20,7 @@ Writing rules:
 
 export class ChartNarrationService {
   constructor() {
-    const apiKey = process.env.OPENAI_KEY || process.env.OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_KEY;
     this.useMock = !apiKey;
     
     if (!this.useMock) {

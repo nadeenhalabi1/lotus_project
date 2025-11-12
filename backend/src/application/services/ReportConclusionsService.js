@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 
-if (!process.env.OPENAI_KEY && !process.env.OPENAI_API_KEY) {
-  console.warn('Warning: OPENAI_KEY or OPENAI_API_KEY not set. Report conclusions will use mock mode.');
+if (!process.env.OPENAI_KEY) {
+  console.warn('Warning: OPENAI_KEY not set. Report conclusions will use mock mode.');
 }
 
 const SYSTEM_PROMPT = `You are a strict data summarization model for EDUCOREAI management reports.
@@ -19,7 +19,7 @@ Output only valid JSON matching the required schema. Never fabricate numbers or 
 
 export class ReportConclusionsService {
   constructor() {
-    const apiKey = process.env.OPENAI_KEY || process.env.OPENAI_API_KEY;
+    const apiKey = process.env.OPENAI_KEY;
     this.useMock = !apiKey;
     
     if (!this.useMock) {
