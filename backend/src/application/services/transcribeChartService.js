@@ -60,6 +60,11 @@ export async function transcribeChartImage({ imageUrl, context }) {
   const minimalContext = context ? context.substring(0, 50) : 'Chart analysis';
 
   try {
+    console.log(`[OpenAI] 📞 CALLING OpenAI API...`);
+    console.log(`[OpenAI] Model: ${model}`);
+    console.log(`[OpenAI] Image URL length: ${imageUrl?.length || 0}`);
+    console.log(`[OpenAI] Context: ${minimalContext}`);
+    
     // Wrap OpenAI call with retry logic
     const response = await withRetry(async () => {
       return await openai.chat.completions.create({
@@ -89,12 +94,19 @@ export async function transcribeChartImage({ imageUrl, context }) {
       });
     }, 3);
 
+    console.log(`[OpenAI] ✅ RESPONSE RECEIVED from OpenAI`);
+    
     const text = response.choices[0]?.message?.content?.trim() || '';
     
+    console.log(`[OpenAI] Response text length: ${text?.length || 0} chars`);
+    console.log(`[OpenAI] Response preview: ${text?.substring(0, 100)}...`);
+    
     if (!text) {
+      console.error(`[OpenAI] ❌ ERROR: Empty transcription from OpenAI`);
       throw new Error('Empty transcription from OpenAI');
     }
     
+    console.log(`[OpenAI] ✅ SUCCESS: Valid transcription received from OpenAI`);
     return text;
   } catch (error) {
     console.error('[transcribeChartImage] OpenAI error:', {

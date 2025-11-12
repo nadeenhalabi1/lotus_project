@@ -298,17 +298,33 @@ export async function upsertTranscriptionSimple({ chartId, text }) {
     const safeSignature = ''; // Empty signature for new workflow (no data change tracking)
     const safeModel = 'gpt-4o-mini'; // Default model
     
+    console.log(`[DB] 💾 ATTEMPTING TO SAVE to ai_chart_transcriptions...`);
+    console.log(`[DB] chart_id: "${safeChartId}"`);
+    console.log(`[DB] chart_signature: "${safeSignature}"`);
+    console.log(`[DB] model: "${safeModel}"`);
+    console.log(`[DB] transcription_text length: ${safeText.length} chars`);
+    console.log(`[DB] transcription_text preview: ${safeText.substring(0, 100)}...`);
+    
     const query = `INSERT INTO ai_chart_transcriptions 
        (chart_id, chart_signature, model, transcription_text, created_at, updated_at)
        VALUES ($1, $2, $3, $4, NOW(), NOW())
        ON CONFLICT (chart_id) 
        DO UPDATE SET 
          transcription_text = EXCLUDED.transcription_text,
-         updated_at = NOW()`;
+         updated_at = NOW()
+       RETURNING id, chart_id, updated_at`;
     
-    await withRetry(async () => {
+    console.log(`[DB] Executing query with parameters:`, [safeChartId, safeSignature, safeModel, `${safeText.substring(0, 50)}...`]);
+    
+    const result = await withRetry(async () => {
       return await pool.query(query, [safeChartId, safeSignature, safeModel, safeText]);
     }, 3);
+    
+    console.log(`[DB] ✅✅✅ SUCCESS! Transcription saved to DB`);
+    console.log(`[DB] Saved row id: ${result.rows[0]?.id}`);
+    console.log(`[DB] Saved chart_id: ${result.rows[0]?.chart_id}`);
+    console.log(`[DB] Saved updated_at: ${result.rows[0]?.updated_at}`);
+    console.log(`[DB] ========================================`);
     
     return true;
   } catch (err) {

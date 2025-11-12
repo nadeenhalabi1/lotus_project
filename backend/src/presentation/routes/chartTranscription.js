@@ -295,19 +295,24 @@ router.post('/chart-transcription/startup', async (req, res) => {
       }
 
       // Call OpenAI to get transcription
-      console.log(`[startup] Chart ${i + 1}/${charts.length}: Calling OpenAI for ${chartId}...`);
+      console.log(`[startup] ========================================`);
+      console.log(`[startup] Chart ${i + 1}/${charts.length}: 📞 Calling OpenAI for ${chartId}...`);
       const text = await openaiQueue.enqueue(async () => {
         return await transcribeChartImage({ imageUrl, context });
       });
 
+      console.log(`[startup] Chart ${chartId}: ✅ OpenAI returned text (${text?.length || 0} chars)`);
+
       if (!text || !text.trim()) {
+        console.error(`[startup] Chart ${chartId}: ❌ ERROR - OpenAI returned empty transcription`);
         results.push({ chartId, status: 'error', error: 'OpenAI returned empty transcription' });
         continue;
       }
 
       // Save to DB
+      console.log(`[startup] Chart ${chartId}: 💾 Saving to DB...`);
       await upsertTranscriptionSimple({ chartId, text });
-      console.log(`[startup] Chart ${chartId} saved to DB`);
+      console.log(`[startup] Chart ${chartId}: ✅✅✅ SUCCESSFULLY SAVED TO DB!`);
       results.push({ chartId, status: 'created' });
     } catch (err) {
       console.error(`[startup] Error for chart ${chartId}:`, err.message);
@@ -581,19 +586,24 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       }
 
       // Always call OpenAI to get new transcription
-      console.log(`[refresh] Chart ${i + 1}/${charts.length}: Calling OpenAI for ${chartId}...`);
+      console.log(`[refresh] ========================================`);
+      console.log(`[refresh] Chart ${i + 1}/${charts.length}: 📞 Calling OpenAI for ${chartId}...`);
       const text = await openaiQueue.enqueue(async () => {
         return await transcribeChartImage({ imageUrl, context });
       });
 
+      console.log(`[refresh] Chart ${chartId}: ✅ OpenAI returned text (${text?.length || 0} chars)`);
+
       if (!text || !text.trim()) {
+        console.error(`[refresh] Chart ${chartId}: ❌ ERROR - OpenAI returned empty transcription`);
         results.push({ chartId, status: 'error', error: 'OpenAI returned empty transcription' });
         continue;
       }
 
       // Save to DB (always overwrite)
+      console.log(`[refresh] Chart ${chartId}: 💾 Saving to DB...`);
       await upsertTranscriptionSimple({ chartId, text });
-      console.log(`[refresh] Chart ${chartId} updated in DB`);
+      console.log(`[refresh] Chart ${chartId}: ✅✅✅ SUCCESSFULLY UPDATED IN DB!`);
       results.push({ chartId, status: 'updated' });
     } catch (err) {
       console.error(`[refresh] Error for chart ${chartId}:`, err.message);
