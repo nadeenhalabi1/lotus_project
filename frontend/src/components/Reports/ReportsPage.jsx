@@ -88,6 +88,7 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           console.log(`[Reports Chart ${chartId}] ✅ Got transcription_text from DB (${dbTranscriptionText.length} chars):`, dbTranscriptionText.substring(0, 50) + '...');
           console.log(`[Reports Chart ${chartId}] 📝 Setting transcriptionText state with DB value`);
           setTranscriptionText(dbTranscriptionText); // Set transcription from DB field transcription_text
+          setLoading(false); // Stop loading - transcription is ready
           loadedChartIdRef.current = chartId;
           retryCountRef.current = 0; // Reset retry count on success
           // Notify parent component
@@ -168,10 +169,12 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
                     );
                     
                     const loadedText = res?.data?.data?.text;
-                    if (loadedText) {
+                    if (loadedText && loadedText.trim()) {
                       console.log(`[Reports Chart ${chartId}] ✅ Transcription loaded from DB (${loadedText.length} chars) - setting transcription_text`);
                       // IMPORTANT: Set transcription from DB field transcription_text
                       setTranscriptionText(loadedText);
+                      setLoading(false); // Stop loading - transcription is ready
+                      loadingRef.current = false; // Update ref too
                       // Clear interval if transcription was loaded
                       if (reloadIntervalRef.current) {
                         clearInterval(reloadIntervalRef.current);
@@ -409,23 +412,34 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
         {(() => {
           // Debug: Log current state
           const chartId = chart.id || `chart-${index}`;
-          if (transcriptionText && transcriptionText.trim()) {
-            console.log(`[Reports Chart ${chartId}] 🎨 Rendering transcription_text (${transcriptionText.length} chars)`);
+          const hasText = transcriptionText && transcriptionText.trim();
+          
+          if (hasText) {
+            console.log(`[Reports Chart ${chartId}] 🎨 Rendering transcription_text (${transcriptionText.length} chars):`, transcriptionText.substring(0, 100));
+          } else {
+            console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text to render. Loading: ${loading}, Text length: ${transcriptionText?.length || 0}`);
           }
           
-          return loading && !transcriptionText ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400 italic">
-              Analyzing chart...
-            </p>
-          ) : transcriptionText && transcriptionText.trim() ? (
-            <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
-              {transcriptionText}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500 dark:text-gray-400 italic">
-              Narration will appear here...
-            </p>
-          );
+          // Show transcription if it exists, otherwise show loading or placeholder
+          if (hasText) {
+            return (
+              <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+                {transcriptionText}
+              </div>
+            );
+          } else if (loading) {
+            return (
+              <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+                Analyzing chart...
+              </p>
+            );
+          } else {
+            return (
+              <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+                Narration will appear here...
+              </p>
+            );
+          }
         })()}
       </div>
     </div>
