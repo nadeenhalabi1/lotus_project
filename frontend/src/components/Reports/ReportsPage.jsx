@@ -118,7 +118,7 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
                 const imageUrl = canvas.toDataURL('image/png');
                 
                 // Send to OpenAI via startup-fill (creates transcription and saves to DB)
-                await apiQueue.enqueue(
+                const startupFillResult = await apiQueue.enqueue(
                   `create-transcription-${chartId}`,
                   () => chartTranscriptionAPI.startupFill([{
                     chartId,
@@ -128,7 +128,10 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
                   }])
                 );
                 
-                console.log(`[Reports Chart ${chartId}] ✅ Transcription sent to OpenAI and saved to DB`);
+                console.log(`[Reports Chart ${chartId}] ✅ Transcription sent to OpenAI and saved to DB`, startupFillResult?.data);
+                
+                // Wait a moment for DB to be updated (OpenAI call + DB write)
+                await new Promise(resolve => setTimeout(resolve, 2000));
                 
                 // Function to reload transcription from DB
                 const reloadTranscription = async () => {
