@@ -1,0 +1,3 @@
+Trigger Vercel redeploy - 2025-11-12 18:50
+New chart transcription workflow with /startup and /refresh endpoints
+
