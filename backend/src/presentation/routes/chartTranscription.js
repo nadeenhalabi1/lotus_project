@@ -207,7 +207,12 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
     }
     
     // Save to DB (UPSERT) and return the saved row
-    console.log(`[POST /chart-transcription/${chartId}] 💾 Saving to DB (UPSERT)...`);
+    console.log(`[POST /chart-transcription/${chartId}] 💾💾💾 SAVING TO DB (UPSERT) for ${chartId}...`);
+    console.log(`[POST /chart-transcription/${chartId}] 💾 Transcription text length: ${transcription_text?.length || 0} chars`);
+    console.log(`[POST /chart-transcription/${chartId}] 💾 Signature: ${signature?.substring(0, 16)}...`);
+    console.log(`[POST /chart-transcription/${chartId}] 💾 Model: ${model}`);
+    console.log(`[POST /chart-transcription/${chartId}] 💾 DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
+    
     const saved = await upsertAndReturn({
       chartId,
       signature,
@@ -215,7 +220,12 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
       text: transcription_text
     });
     
-    console.log(`[POST /chart-transcription/${chartId}] ✅ Saved to DB, returning row`);
+    console.log(`[POST /chart-transcription/${chartId}] ✅✅✅ SAVED TO DB SUCCESSFULLY!`);
+    console.log(`[POST /chart-transcription/${chartId}] ✅ Saved row:`, {
+      chartId: saved.chart_id,
+      transcription_text_length: saved.transcription_text?.length || 0,
+      updated_at: saved.updated_at
+    });
     
     // Return the saved row (DB is the single source of truth)
     res.status(existing ? 200 : 201).json({
@@ -406,13 +416,19 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
         console.log(`[AI Save] [startup-fill] model: ${model}`);
         console.log(`[AI Save] [startup-fill] DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
         
-        // Save to DB - DB is the single source of truth
-        console.log(`[startup-fill] Chart ${chartId} 💾 Saving transcription to DB...`);
+        // ⚠️ CRITICAL: Save to DB BEFORE moving to next chart
+        // This ensures each chart is fully processed (OpenAI → DB) before the next one starts
+        console.log(`[startup-fill] Chart ${chartId} 💾💾💾 SAVING TRANSCRIPTION TO DB (must complete before next chart)...`);
+        console.log(`[startup-fill] Chart ${chartId} 💾 Transcription text length: ${text?.length || 0} chars`);
+        console.log(`[startup-fill] Chart ${chartId} 💾 Signature: ${signature?.substring(0, 16)}...`);
+        console.log(`[startup-fill] Chart ${chartId} 💾 Model: ${model}`);
+        console.log(`[startup-fill] Chart ${chartId} 💾 DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
+        
         try {
           const savedText = await upsertTranscription({ chartId, signature, text, model });
-          console.log(`[startup-fill] Chart ${chartId} ✅ Transcription saved to DB successfully`);
-          console.log(`[startup-fill] Chart ${chartId} Saved text length: ${savedText?.length || 0}`);
-          console.log(`[AI Save] ✅ Saved transcription to DB for ${chartId} (startup-fill)`);
+          console.log(`[startup-fill] Chart ${chartId} ✅✅✅ TRANSCRIPTION SAVED TO DB SUCCESSFULLY!`);
+          console.log(`[startup-fill] Chart ${chartId} ✅ Saved text length: ${savedText?.length || 0} chars`);
+          console.log(`[AI Save] ✅✅✅ Saved transcription to DB for ${chartId} (startup-fill)`);
           
           // Verify the transcription was saved by reading it back from DB
           try {
