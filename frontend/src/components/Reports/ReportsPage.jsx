@@ -9,6 +9,7 @@ import MultiSeriesAreaChart from '../Charts/MultiSeriesAreaChart';
 import { Download } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import html2canvas from 'html2canvas';
+import { apiQueue } from '../../utils/apiQueue';
 
 // Component for chart with narration
 const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarrationReady }) => {
@@ -49,16 +50,20 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           console.log(`[Reports Chart ${chartId}] 🔄 Fetching transcription directly from DB (GET /ai/chart-transcription/${chartId})...`);
         }
         
-        // Call API directly - ALWAYS fetch from DB, NO local cache
+        // Call API through queue to prevent rate limiting
         // This ensures transcriptions are managed ONLY in DB
         // Pass topic and chartData to verify signature matches current data
-        console.log(`[Reports Chart ${chartId}] Fetching from DB with signature verification...`);
+        console.log(`[Reports Chart ${chartId}] Queuing transcription fetch from DB...`);
         
         // Get current chart data for signature verification
         const topic = `${reportTitle || 'Report'} - ${chart.title || chartId}`;
         const chartData = chart.data || {};
         
-        const res = await chartTranscriptionAPI.getTranscription(chartId, topic, chartData);
+        // Use queue to prevent concurrent requests and rate limiting
+        const res = await apiQueue.enqueue(
+          `transcription-${chartId}`, // Unique key to prevent duplicate requests
+          () => chartTranscriptionAPI.getTranscription(chartId, topic, chartData)
+        );
         const dbTranscriptionText = res.data.data?.text || null;
         
         // Always set what's in DB (even if null) - this ensures sync with DB
@@ -86,46 +91,14 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
             console.log(`[Reports Chart ${chartId}] ⚠️ Transcription outdated - data has changed`);
             console.log(`[Reports Chart ${chartId}] Current signature: ${error.response?.data?.currentSignature}`);
             console.log(`[Reports Chart ${chartId}] Stored signature: ${error.response?.data?.storedSignature}`);
-            console.log(`[Reports Chart ${chartId}] Creating new transcription with current data...`);
+            console.log(`[Reports Chart ${chartId}] Will create new transcription later (queued to prevent rate limiting)...`);
             
             // Clear transcription text - it's outdated
             setTranscriptionText('');
             
-            // Wait for chart to render, then create new transcription
-            setTimeout(async () => {
-              try {
-                // Find the chart element
-                const chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
-                if (chartElement) {
-                  console.log(`[Reports Chart ${chartId}] Capturing chart image for new transcription...`);
-                  // Capture chart image
-                  // Detect theme from document
-                  const isDark = document.documentElement.classList.contains('dark');
-                  const canvas = await html2canvas(chartElement, {
-                    backgroundColor: isDark ? '#1f2937' : '#ffffff',
-                    scale: 1,
-                    logging: false,
-                    useCORS: true
-                  });
-                  
-                  const imageUrl = canvas.toDataURL('image/png');
-                  const topic = `${reportTitle || 'Report'} - ${chart.title || chartId}`;
-                  
-                  // Create new transcription with current data
-                  await chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, chart.data || {});
-                  console.log(`[Reports Chart ${chartId}] ✅ New transcription created with current data`);
-                  
-                  // Reload transcription from DB
-                  setTimeout(() => {
-                    loadTranscriptionFromDB();
-                  }, 1000);
-                } else {
-                  console.warn(`[Reports Chart ${chartId}] Chart element not found, cannot create new transcription`);
-                }
-              } catch (err) {
-                console.error(`[Reports Chart ${chartId}] Failed to create new transcription:`, err);
-              }
-            }, 2000); // Wait for chart to render
+            // Don't create transcription immediately - queue it to prevent rate limiting
+            // The transcription will be created in the background via the startup-fill process
+            // This prevents multiple simultaneous OpenAI calls
           } else {
             // No transcription in DB - this is OK
             console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text in DB (404)`);
@@ -133,11 +106,12 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           }
           retryCountRef.current = 0; // Reset retry count for 404
         } else if (error.response?.status === 429) {
-          // Rate limit exceeded - retry with exponential backoff
-          const maxRetries = 3;
+          // Rate limit exceeded - retry with longer exponential backoff
+          const maxRetries = 2; // Reduced retries to prevent loops
           if (retryCountRef.current < maxRetries) {
             retryCountRef.current += 1;
-            const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 10000); // Exponential backoff, max 10s
+            // Longer delays: 5s, 15s (instead of 1s, 2s, 4s)
+            const delay = retryCountRef.current === 1 ? 5000 : 15000;
             console.log(`[Reports Chart ${chartId}] ⚠️ Rate limit (429), retrying in ${delay}ms (attempt ${retryCountRef.current}/${maxRetries})...`);
             
             loadingRef.current = false;
@@ -148,9 +122,10 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
             }, delay);
             return;
           } else {
-            console.error(`[Reports Chart ${chartId}] ❌ Rate limit exceeded after ${maxRetries} retries`);
+            console.error(`[Reports Chart ${chartId}] ❌ Rate limit exceeded after ${maxRetries} retries - will try again later`);
             setTranscriptionText(''); // Clear on error
             retryCountRef.current = 0;
+            // Don't retry immediately - wait for user action or page refresh
           }
         } else {
           console.error(`[Reports Chart ${chartId}] ❌ Error fetching transcription_text from DB:`, error);
@@ -179,24 +154,31 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
     }
     
     // Wait a bit for chart to render, then load from DB
+    // Increased delay to prevent multiple simultaneous loads
     const timer = setTimeout(() => {
       // Double-check we still need to load (chart might have changed)
       if (loadedChartIdRef.current !== chartId || !transcriptionText) {
-        loadTranscriptionFromDB();
+        // Only load if not already loading
+        if (!loadingRef.current) {
+          loadTranscriptionFromDB();
+        }
       }
-    }, 2000);
+    }, 3000); // Increased delay to prevent rate limiting
 
     // Listen for refresh event from dashboard
     const handleRefreshEvent = () => {
       // Only reload if this is the correct chart
       if (loadedChartIdRef.current === chartId) {
-        console.log(`[Reports Chart ${chartId}] 🔄 Refresh event received, reloading transcription from DB...`);
+        console.log(`[Reports Chart ${chartId}] 🔄 Refresh event received, will reload transcription from DB...`);
         // Reset retry count for refresh
         retryCountRef.current = 0;
-        // Wait a bit for DB to be updated, then reload
+        // Wait longer for DB to be updated and queue to process, then reload
         setTimeout(() => {
-          loadTranscriptionFromDB();
-        }, 2000); // Increased delay to allow DB to update
+          // Only reload if not already loading
+          if (!loadingRef.current) {
+            loadTranscriptionFromDB();
+          }
+        }, 5000); // Increased delay to allow DB to update and prevent rate limiting
       }
     };
 
@@ -205,8 +187,10 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
     return () => {
       clearTimeout(timer);
       window.removeEventListener('reportTranscriptionsRefreshed', handleRefreshEvent);
+      // Reset loading flag when component unmounts
+      loadingRef.current = false;
     };
-  }, [chart.id, index, onNarrationReady]);
+  }, [chart.id, index, onNarrationReady, reportTitle]); // Added reportTitle to dependencies
 
   // Ensure consistent chartId - use chart.id if available, otherwise use index-based ID
   // This MUST match the chartId used in useEffect for loading transcriptions
@@ -334,9 +318,13 @@ const ReportsPage = () => {
               
               try {
                 // First check if transcription exists in DB (DB is the single source of truth)
+                // Use queue to prevent rate limiting
                 let needsTranscription = true;
                 try {
-                  const existingTranscription = await chartTranscriptionAPI.getTranscription(chartId);
+                  const existingTranscription = await apiQueue.enqueue(
+                    `check-transcription-${chartId}`,
+                    () => chartTranscriptionAPI.getTranscription(chartId)
+                  );
                   if (existingTranscription.data?.data?.text) {
                     console.log(`[Reports] Chart ${chartId} already has transcription in DB, skipping`);
                     needsTranscription = false;
@@ -346,6 +334,10 @@ const ReportsPage = () => {
                   if (err.response?.status === 404) {
                     console.log(`[Reports] Chart ${chartId} has no transcription in DB, will create one`);
                     needsTranscription = true;
+                  } else if (err.response?.status === 429) {
+                    // Rate limited - skip for now, will be created later
+                    console.warn(`[Reports] Rate limited when checking transcription for ${chartId}, will skip for now`);
+                    continue; // Skip this chart if rate limited
                   } else {
                     console.warn(`[Reports] Error checking transcription in DB for ${chartId}:`, err);
                     continue; // Skip this chart if there's an error
@@ -435,66 +427,39 @@ const ReportsPage = () => {
             }
             
             // Batch process all charts that need transcriptions
+            // Use queue to prevent rate limiting
             if (chartsForFill.length > 0) {
-              console.log(`[Reports] Creating transcriptions for ${chartsForFill.length} charts without transcriptions in DB...`);
+              console.log(`[Reports] Queuing transcription creation for ${chartsForFill.length} charts...`);
               
-              // Process in batches of 2 to avoid rate limiting and improve performance
-              const batchSize = 2;
-              const failedCharts = [];
-              
-              for (let i = 0; i < chartsForFill.length; i += batchSize) {
-                const batch = chartsForFill.slice(i, i + batchSize);
+              // Process ONE chart at a time through queue to prevent rate limiting
+              for (let i = 0; i < chartsForFill.length; i++) {
+                const chart = chartsForFill[i];
                 try {
-                  console.log(`[Reports] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(chartsForFill.length / batchSize)}...`);
-                  const results = await chartTranscriptionAPI.startupFill(batch);
+                  console.log(`[Reports] Queuing transcription creation for chart ${i + 1}/${chartsForFill.length}: ${chart.chartId}`);
                   
-                  // Check for failed charts in this batch
-                  if (results.data?.results) {
-                    results.data.results.forEach((result, idx) => {
-                      if (result.status === 'error') {
-                        failedCharts.push(batch[idx]);
-                        console.warn(`[Reports] Chart ${batch[idx].chartId} failed: ${result.error}`);
-                      }
-                    });
-                  }
+                  // Queue each chart individually with delay
+                  await apiQueue.enqueue(
+                    `create-transcription-${chart.chartId}`,
+                    async () => {
+                      // Wait before processing to prevent rate limiting
+                      await new Promise(resolve => setTimeout(resolve, 2000));
+                      return await chartTranscriptionAPI.startupFill([chart]);
+                    }
+                  );
                   
-                  console.log(`[Reports] Batch ${Math.floor(i / batchSize) + 1} completed`);
-                  
-                  // Wait between batches to avoid rate limiting
-                  if (i + batchSize < chartsForFill.length) {
-                    await new Promise(resolve => setTimeout(resolve, 3000)); // Increased delay
-                  }
+                  console.log(`[Reports] Chart ${chart.chartId} transcription queued successfully`);
                 } catch (err) {
-                  console.error(`[Reports] Failed to process batch:`, err);
-                  // Add all charts from failed batch to retry list
-                  failedCharts.push(...batch);
-                  // Continue with next batch
+                  console.error(`[Reports] Failed to queue transcription for ${chart.chartId}:`, err);
+                  // Continue with next chart even if one fails
                 }
               }
               
-              // Retry failed charts once
-              if (failedCharts.length > 0) {
-                console.log(`[Reports] Retrying ${failedCharts.length} failed charts...`);
-                await new Promise(resolve => setTimeout(resolve, 5000)); // Wait before retry
-                
-                for (const chart of failedCharts) {
-                  try {
-                    await chartTranscriptionAPI.startupFill([chart]);
-                    console.log(`[Reports] Retry successful for ${chart.chartId}`);
-                  } catch (err) {
-                    console.error(`[Reports] Retry failed for ${chart.chartId}:`, err);
-                  }
-                  // Wait between retries
-                  await new Promise(resolve => setTimeout(resolve, 2000));
-                }
-              }
+              console.log(`[Reports] All transcription creation requests queued`);
               
-              console.log(`[Reports] Transcription creation process completed`);
-              
-              // Trigger reload of transcriptions after a delay to ensure DB is updated
+              // Trigger reload of transcriptions after a longer delay to ensure DB is updated
               setTimeout(() => {
                 window.dispatchEvent(new CustomEvent('reportTranscriptionsRefreshed'));
-              }, 3000);
+              }, 10000); // Increased delay to allow queue to process
             } else {
               console.log(`[Reports] All charts already have transcriptions in DB`);
             }
