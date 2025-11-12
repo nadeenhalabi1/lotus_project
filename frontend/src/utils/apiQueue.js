@@ -179,6 +179,13 @@ class APIQueue {
           } catch (error) {
             lastError = error;
             
+            // 404 is NOT a failure - it means no transcription exists (expected state)
+            if (error.response?.status === 404) {
+              // Don't record as failure - 404 is expected when transcription doesn't exist
+              result = { data: { data: { text: null } } }; // Return empty result for 404
+              break;
+            }
+            
             // If 429 (rate limit), wait longer before retry
             if (error.response?.status === 429) {
               if (attempt < request.maxRetries) {

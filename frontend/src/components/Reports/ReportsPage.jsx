@@ -127,6 +127,11 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
             retryCountRef.current = 0;
             // Don't retry immediately - wait for user action or page refresh
           }
+        } else if (error.message?.includes('Circuit breaker')) {
+          // Circuit breaker is open - don't treat as error, just wait
+          console.log(`[Reports Chart ${chartId}] ⚠️ Circuit breaker is open, will retry later`);
+          setTranscriptionText(''); // Clear
+          retryCountRef.current = 0;
         } else {
           console.error(`[Reports Chart ${chartId}] ❌ Error fetching transcription_text from DB:`, error);
           setTranscriptionText(''); // Clear on error
