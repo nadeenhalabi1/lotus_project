@@ -277,6 +277,7 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o-
 /**
  * Simple upsert - only chartId and text (for new workflow)
  * updated_at is automatically updated by trigger
+ * RETURNS the actual saved row from DB to verify the write succeeded
  */
 export async function upsertTranscriptionSimple({ chartId, text }) {
   if (!process.env.DATABASE_URL) {
@@ -298,10 +299,9 @@ export async function upsertTranscriptionSimple({ chartId, text }) {
     const safeSignature = ''; // Empty signature for new workflow (no data change tracking)
     const safeModel = 'gpt-4o-mini'; // Default model
     
+    console.log(`[DB] ========================================`);
     console.log(`[DB] 💾 ATTEMPTING TO SAVE to ai_chart_transcriptions...`);
     console.log(`[DB] chart_id: "${safeChartId}"`);
-    console.log(`[DB] chart_signature: "${safeSignature}"`);
-    console.log(`[DB] model: "${safeModel}"`);
     console.log(`[DB] transcription_text length: ${safeText.length} chars`);
     console.log(`[DB] transcription_text preview: ${safeText.substring(0, 100)}...`);
     
@@ -312,23 +312,62 @@ export async function upsertTranscriptionSimple({ chartId, text }) {
        DO UPDATE SET 
          transcription_text = EXCLUDED.transcription_text,
          updated_at = NOW()
-       RETURNING id, chart_id, updated_at`;
-    
-    console.log(`[DB] Executing query with parameters:`, [safeChartId, safeSignature, safeModel, `${safeText.substring(0, 50)}...`]);
+       RETURNING chart_id, transcription_text, updated_at`;
     
     const result = await withRetry(async () => {
       return await pool.query(query, [safeChartId, safeSignature, safeModel, safeText]);
     }, 3);
     
-    console.log(`[DB] ✅✅✅ SUCCESS! Transcription saved to DB`);
-    console.log(`[DB] Saved row id: ${result.rows[0]?.id}`);
-    console.log(`[DB] Saved chart_id: ${result.rows[0]?.chart_id}`);
-    console.log(`[DB] Saved updated_at: ${result.rows[0]?.updated_at}`);
+    if (!result.rows || result.rows.length === 0) {
+      throw new Error('UPSERT query returned no rows - write may have failed');
+    }
+    
+    const savedRow = result.rows[0];
+    
+    console.log(`[DB] ✅ UPSERT query completed`);
+    console.log(`[DB] Returned chart_id: ${savedRow.chart_id}`);
+    console.log(`[DB] Returned updated_at: ${savedRow.updated_at}`);
+    
+    // 🔍 CRITICAL VERIFICATION: Read back from DB to PROVE the write succeeded
+    console.log(`[DB] 🔍 VERIFYING: Reading back from DB...`);
+    const verifyQuery = `SELECT chart_id, transcription_text, updated_at 
+                         FROM ai_chart_transcriptions 
+                         WHERE chart_id = $1`;
+    const verifyResult = await pool.query(verifyQuery, [safeChartId]);
+    
+    if (!verifyResult.rows || verifyResult.rows.length === 0) {
+      console.error(`[DB] ❌❌❌ VERIFICATION FAILED! Row not found in DB after UPSERT!`);
+      throw new Error(`Verification failed: Row for ${safeChartId} not found in DB after write`);
+    }
+    
+    const verifiedRow = verifyResult.rows[0];
+    const textMatches = verifiedRow.transcription_text === safeText;
+    
+    console.log(`[DB] 🔍 VERIFICATION RESULT:`);
+    console.log(`[DB] chart_id: ${verifiedRow.chart_id}`);
+    console.log(`[DB] transcription_text length: ${verifiedRow.transcription_text?.length || 0} chars`);
+    console.log(`[DB] transcription_text preview: ${verifiedRow.transcription_text?.substring(0, 100)}...`);
+    console.log(`[DB] updated_at: ${verifiedRow.updated_at}`);
+    console.log(`[DB] Text matches what we wrote: ${textMatches}`);
+    
+    if (!textMatches) {
+      console.error(`[DB] ❌❌❌ TEXT MISMATCH!`);
+      console.error(`[DB] Expected length: ${safeText.length}`);
+      console.error(`[DB] Actual length: ${verifiedRow.transcription_text?.length || 0}`);
+      throw new Error(`Text mismatch: DB contains different text than what we wrote`);
+    }
+    
+    console.log(`[DB] ✅✅✅ SUCCESS! Transcription VERIFIED in DB`);
     console.log(`[DB] ========================================`);
     
-    return true;
+    return {
+      success: true,
+      chartId: verifiedRow.chart_id,
+      transcriptionText: verifiedRow.transcription_text,
+      updatedAt: verifiedRow.updated_at
+    };
   } catch (err) {
-    console.error('[upsertTranscriptionSimple] Database error:', {
+    console.error('[upsertTranscriptionSimple] ❌ Database error:', {
       message: err.message,
       code: err.code,
       detail: err.detail,

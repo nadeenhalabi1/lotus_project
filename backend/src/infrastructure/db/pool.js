@@ -14,6 +14,19 @@ export function getPool() {
   }
   
   if (!pool) {
+    // Parse DATABASE_URL to show connection info (obscured for security)
+    const dbUrl = new URL(process.env.DATABASE_URL);
+    const obscuredHost = dbUrl.hostname.substring(0, 10) + '...';
+    const obscuredDb = dbUrl.pathname.substring(1, 6) + '...';
+    
+    console.log('[DB Pool] ========================================');
+    console.log('[DB Pool] Creating singleton PostgreSQL pool');
+    console.log('[DB Pool] Host:', obscuredHost);
+    console.log('[DB Pool] Database:', obscuredDb);
+    console.log('[DB Pool] SSL: enabled');
+    console.log('[DB Pool] Max connections:', Number(process.env.PG_POOL_MAX || 10));
+    console.log('[DB Pool] ========================================');
+    
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false }, // Required for Railway/Supabase/Neon
@@ -27,7 +40,7 @@ export function getPool() {
       console.error('[DB Pool] Unexpected idle error:', err);
     });
     
-    console.log('[DB Pool] Singleton pool created');
+    console.log('[DB Pool] ✅ Singleton pool created successfully');
   }
   
   return pool;

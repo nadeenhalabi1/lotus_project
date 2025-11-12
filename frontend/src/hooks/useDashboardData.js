@@ -208,13 +208,20 @@ export const useDashboardData = () => {
       setTimeout(async () => {
         if (dashboardData.charts && dashboardData.charts.length > 0) {
           try {
-            console.log(`[Dashboard Refresh] Refreshing transcriptions for ${dashboardData.charts.length} charts...`);
+            console.log(`[Dashboard Refresh] ========================================`);
+            console.log(`[Dashboard Refresh] 🚀 STARTING REFRESH FLOW`);
+            console.log(`[Dashboard Refresh] Total charts in dashboardData: ${dashboardData.charts.length}`);
+            console.log(`[Dashboard Refresh] Chart IDs:`, dashboardData.charts.map(c => c.id));
+            console.log(`[Dashboard Refresh] DOM elements with [data-chart-id]:`, document.querySelectorAll('[data-chart-id]').length);
+            console.log(`[Dashboard Refresh] DOM elements with .recharts-wrapper:`, document.querySelectorAll('.recharts-wrapper').length);
             
             // Capture all chart images
             const chartsForRefresh = [];
             for (let i = 0; i < dashboardData.charts.length; i++) {
               const chart = dashboardData.charts[i];
               const chartId = chart.id || `chart-${i}`;
+              
+              console.log(`[Dashboard Refresh] Processing chart ${i + 1}/${dashboardData.charts.length}: ${chartId}`);
               
               try {
                 // Find the chart element - try multiple selectors
@@ -237,6 +244,7 @@ export const useDashboardData = () => {
                 }
                 
                 if (chartElement) {
+                  console.log(`[Dashboard Refresh] ✅ Found chart element for ${chartId}`);
                   // Capture chart image
                   const canvas = await html2canvas(chartElement, {
                     backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
@@ -248,28 +256,63 @@ export const useDashboardData = () => {
                   const imageUrl = canvas.toDataURL('image/png');
                   const context = `${chart.title || chartId}`;
                   
+                  console.log(`[Dashboard Refresh] ✅ Captured image for ${chartId}: ${imageUrl.length} chars, context: "${context}"`);
+                  
                   chartsForRefresh.push({
                     chartId,
                     imageUrl,
                     context
                   });
+                } else {
+                  console.error(`[Dashboard Refresh] ❌ Chart element NOT FOUND for ${chartId}`);
                 }
               } catch (err) {
-                console.error(`[Dashboard Refresh] Failed to capture chart ${chartId}:`, err);
+                console.error(`[Dashboard Refresh] ❌ Failed to capture chart ${chartId}:`, err);
               }
             }
             
+            console.log(`[Dashboard Refresh] ========================================`);
+            console.log(`[Dashboard Refresh] 📊 CAPTURE SUMMARY:`);
+            console.log(`[Dashboard Refresh] Total charts in data: ${dashboardData.charts.length}`);
+            console.log(`[Dashboard Refresh] Successfully captured: ${chartsForRefresh.length}`);
+            console.log(`[Dashboard Refresh] Chart IDs captured:`, chartsForRefresh.map(c => c.chartId));
+            
             // Call /refresh endpoint - processes charts sequentially, always overwrites
             if (chartsForRefresh.length > 0) {
-              console.log(`[Dashboard Refresh] Sending ${chartsForRefresh.length} charts to /refresh endpoint...`);
+              console.log(`[Dashboard Refresh] ========================================`);
+              console.log(`[Dashboard Refresh] 📤 SENDING TO BACKEND: ${chartsForRefresh.length} charts`);
+              console.log(`[Dashboard Refresh] Request body structure:`, {
+                charts: chartsForRefresh.map(c => ({
+                  chartId: c.chartId,
+                  imageUrl: `${c.imageUrl.substring(0, 50)}... (${c.imageUrl.length} chars)`,
+                  context: c.context
+                }))
+              });
+              
               const { data } = await chartTranscriptionAPI.refresh(chartsForRefresh);
-              console.log(`[Dashboard Refresh] ✅ Refresh completed:`, data);
+              
+              console.log(`[Dashboard Refresh] ========================================`);
+              console.log(`[Dashboard Refresh] 📥 BACKEND RESPONSE RECEIVED`);
+              console.log(`[Dashboard Refresh] Full response:`, data);
               
               if (data.results) {
                 const updated = data.results.filter(r => r.status === 'updated').length;
                 const errors = data.results.filter(r => r.status === 'error').length;
-                console.log(`[Dashboard Refresh] Results: ${updated} updated, ${errors} errors`);
+                const skipped = data.results.filter(r => r.status === 'skip-invalid').length;
+                console.log(`[Dashboard Refresh] Results: ${updated} updated, ${errors} errors, ${skipped} skipped`);
+                
+                // Log each result
+                data.results.forEach(result => {
+                  console.log(`[Dashboard Refresh] Chart ${result.chartId}: ${result.status}${result.error ? ` (${result.error})` : ''}`);
+                });
               }
+            } else {
+              console.error(`[Dashboard Refresh] ❌❌❌ CRITICAL: NO CHARTS WERE CAPTURED!`);
+              console.error(`[Dashboard Refresh] This means the refresh will NOT call the backend.`);
+              console.error(`[Dashboard Refresh] Possible reasons:`);
+              console.error(`[Dashboard Refresh] 1. Charts not rendered yet (increase setTimeout delay)`);
+              console.error(`[Dashboard Refresh] 2. Chart elements don't have [data-chart-id] attribute`);
+              console.error(`[Dashboard Refresh] 3. Charts don't have .recharts-wrapper class`);
             }
             
             console.log(`[Dashboard Refresh] All dashboard chart transcriptions refreshed successfully`);
