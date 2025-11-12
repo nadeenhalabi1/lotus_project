@@ -138,29 +138,18 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
     console.log(`[POST /chart-transcription/${chartId}] Computed signature: ${signature.substring(0, 8)}...`);
     
     // Check if transcription already exists
-    const existing = await getTranscriptionByChartId(chartId);
+    const existing = await findByChartId(chartId);
     
-    // If exists and signature matches → reuse existing (no OpenAI call)
-    if (existing && existing.chart_signature === signature) {
-      console.log(`[POST /chart-transcription/${chartId}] Transcription exists with matching signature - reusing existing`);
+    // If forceRecompute=false and signature matches → return existing without OpenAI call
+    if (!forceRecompute && existing && existing.chart_signature === signature) {
+      console.log(`[POST /chart-transcription/${chartId}] Signature matches, returning existing (no OpenAI call)`);
       return res.status(200).json({
-        created: false,
-        updated: false,
-        chartId,
+        chartId: existing.chart_id,
         chart_signature: existing.chart_signature,
         model: existing.model || model,
-        transcription_text: existing.transcription_text
+        transcription_text: existing.transcription_text,
+        updated_at: existing.updated_at
       });
-    }
-    
-    // If signature differs or doesn't exist → call OpenAI and save/update
-    const wasCreated = !existing;
-    const wasUpdated = !!existing;
-    
-    if (wasUpdated) {
-      console.log(`[POST /chart-transcription/${chartId}] Signature changed (${existing.chart_signature?.substring(0, 8)}... → ${signature.substring(0, 8)}...) - generating new transcription`);
-    } else {
-      console.log(`[POST /chart-transcription/${chartId}] No transcription exists - creating new one via OpenAI...`);
     }
     
     // ⚠️ CRITICAL: Compress chartData before sending to OpenAI to reduce token usage
@@ -194,73 +183,41 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
     }
     
     if (!transcription_text || !transcription_text.trim()) {
-      console.error(`[POST /chart-transcription/${chartId}] ⚠️ WARNING: OpenAI returned empty transcription!`);
-      console.error(`[POST /chart-transcription/${chartId}] transcription_text value:`, transcription_text);
-      throw new Error('OpenAI returned empty transcription');
+      return res.status(502).json({ 
+        chartId,
+        error: 'OpenAI returned empty transcription' 
+      });
     }
     
-    // 🔍 DEBUG: Verify we have all required data before DB save
-    console.log(`[AI Save] chartId: ${chartId}`);
-    console.log(`[AI Save] transcription_text length: ${transcription_text?.length || 0}`);
-    console.log(`[AI Save] signature: ${signature?.substring(0, 16)}...`);
-    console.log(`[AI Save] model: ${model}`);
-    console.log(`[AI Save] DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
-    
-    // Save/update to DB (upsert)
-    console.log(`[POST /chart-transcription/${chartId}] 💾 Saving transcription to DB...`);
-    try {
-      const savedText = await upsertTranscription({ chartId, signature, text: transcription_text, model });
-      console.log(`[POST /chart-transcription/${chartId}] ✅ Transcription saved to DB successfully`);
-      console.log(`[POST /chart-transcription/${chartId}] Saved text length: ${savedText?.length || 0}`);
-      console.log(`[AI Save] ✅ Saved transcription to DB for ${chartId}`);
-      
-      // Verify the transcription was saved by reading it back from DB
-      try {
-        const verify = await getTranscriptionByChartId(chartId);
-        if (verify && verify.transcription_text === transcription_text) {
-          console.log(`[POST /chart-transcription/${chartId}] ✅ Verified: Transcription matches what was saved`);
-        } else {
-          console.error(`[POST /chart-transcription/${chartId}] ⚠️ WARNING: Verification failed! DB text doesn't match saved text`);
-          console.error(`[POST /chart-transcription/${chartId}] Original text length: ${transcription_text?.length || 0}`);
-          console.error(`[POST /chart-transcription/${chartId}] DB text length: ${verify?.transcription_text?.length || 0}`);
-          console.error(`[POST /chart-transcription/${chartId}] Saved: ${transcription_text?.substring(0, 100)}...`);
-          console.error(`[POST /chart-transcription/${chartId}] DB: ${verify?.transcription_text?.substring(0, 100) || 'null'}...`);
-        }
-      } catch (verifyErr) {
-        console.error(`[POST /chart-transcription/${chartId}] ⚠️ Could not verify transcription in DB:`, verifyErr.message);
-        console.error(`[POST /chart-transcription/${chartId}] Verification error stack:`, verifyErr.stack);
-      }
-    } catch (saveErr) {
-      console.error(`[POST /chart-transcription/${chartId}] ❌ CRITICAL: Failed to save transcription to DB:`, saveErr.message);
-      console.error(`[POST /chart-transcription/${chartId}] Save error stack:`, saveErr.stack);
-      throw saveErr; // Re-throw to be caught by outer try-catch
-    }
-    
-    if (wasCreated) {
-      console.log(`[POST /chart-transcription/${chartId}] ✅ Transcription created and saved to DB`);
-    } else {
-      console.log(`[POST /chart-transcription/${chartId}] ✅ Transcription updated in DB (signature changed)`);
-    }
-    
-    return res.status(wasCreated ? 201 : 200).json({
-      created: wasCreated,
-      updated: wasUpdated,
+    // Save to DB (UPSERT) and return the saved row
+    console.log(`[POST /chart-transcription/${chartId}] 💾 Saving to DB (UPSERT)...`);
+    const saved = await upsertAndReturn({
       chartId,
-      chart_signature: signature,
+      signature,
       model,
-      transcription_text
+      text: transcription_text
+    });
+    
+    console.log(`[POST /chart-transcription/${chartId}] ✅ Saved to DB, returning row`);
+    
+    // Return the saved row (DB is the single source of truth)
+    res.status(existing ? 200 : 201).json({
+      chartId: saved.chart_id,
+      chart_signature: saved.chart_signature,
+      model: saved.model,
+      transcription_text: saved.transcription_text,
+      updated_at: saved.updated_at
     });
   } catch (err) {
     console.error(`[POST /chart-transcription/${chartId}] Error:`, {
       message: err.message,
-      stack: err.stack
+      stack: err.stack,
+      name: err.name,
+      code: err.code
     });
     
     res.status(500).json({ 
-      created: false,
-      updated: false,
       chartId,
-      transcription_text: null,
       error: err?.message || 'AI/DB error'
     });
   }
