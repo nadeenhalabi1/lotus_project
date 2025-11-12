@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { dashboardAPI, chartTranscriptionAPI } from '../services/api';
 import { browserCache } from '../services/cache';
 import html2canvas from 'html2canvas';
+import { apiQueue } from '../utils/apiQueue';
 
 export const useDashboardData = () => {
   const [data, setData] = useState(null);
