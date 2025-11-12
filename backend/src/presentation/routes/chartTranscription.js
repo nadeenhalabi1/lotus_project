@@ -907,5 +907,65 @@ router.post('/chart-transcription/refresh-legacy', async (req, res) => {
   }
 });
 
+/**
+ * 🧪 TEST ENDPOINT: Manually set a transcription to test DB writes
+ * POST /api/v1/ai/chart-transcription/test-write
+ * Body: { chartId: string, testText: string }
+ * 
+ * This endpoint allows you to manually test DB writes without calling OpenAI.
+ * Use it to verify that:
+ * 1. Data is written to public.ai_chart_transcriptions.transcription_text
+ * 2. updated_at changes
+ * 3. The Reports page displays the new text
+ */
+router.post('/chart-transcription/test-write', async (req, res) => {
+  const { chartId, testText } = req.body || {};
+  
+  console.log(`[test-write] ========================================`);
+  console.log(`[test-write] 🧪 TEST ENDPOINT CALLED`);
+  console.log(`[test-write] chartId:`, chartId);
+  console.log(`[test-write] testText:`, testText);
+  
+  if (!chartId || !testText) {
+    return res.status(400).json({ 
+      ok: false, 
+      error: 'chartId and testText required' 
+    });
+  }
+  
+  try {
+    console.log(`[test-write] 💾 Writing test data to DB...`);
+    
+    const savedData = await upsertTranscriptionSimple({ 
+      chartId, 
+      text: testText 
+    });
+    
+    console.log(`[test-write] ✅ Test data saved and verified!`);
+    console.log(`[test-write] Verified chartId: ${savedData.chartId}`);
+    console.log(`[test-write] Verified text: ${savedData.transcriptionText}`);
+    console.log(`[test-write] Verified updated_at: ${savedData.updatedAt}`);
+    console.log(`[test-write] ========================================`);
+    
+    res.json({
+      ok: true,
+      message: 'Test transcription saved successfully',
+      data: {
+        chartId: savedData.chartId,
+        transcriptionText: savedData.transcriptionText,
+        textLength: savedData.transcriptionText?.length,
+        updatedAt: savedData.updatedAt,
+        verified: true
+      }
+    });
+  } catch (err) {
+    console.error(`[test-write] ❌ ERROR:`, err);
+    res.status(500).json({
+      ok: false,
+      error: err.message
+    });
+  }
+});
+
 export default router;
 

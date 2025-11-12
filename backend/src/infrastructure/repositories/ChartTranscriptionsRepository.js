@@ -25,7 +25,7 @@ export async function getCachedTranscription(chartId, signature) {
   try {
     const result = await getPool().query(
       `SELECT transcription_text, chart_signature 
-       FROM ai_chart_transcriptions 
+       FROM public.ai_chart_transcriptions 
        WHERE chart_id = $1 AND chart_signature = $2 
        LIMIT 1`,
       [chartId, signature]
@@ -58,9 +58,9 @@ export async function saveTranscription(chartId, signature, model, text) {
   
   try {
     await getPool().query(
-      `INSERT INTO ai_chart_transcriptions 
-       (chart_id, chart_signature, model, transcription_text, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
+      `INSERT INTO public.ai_chart_transcriptions 
+       (chart_id, chart_signature, model, transcription_text, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
        ON CONFLICT (chart_id) 
        DO UPDATE SET 
          chart_signature = EXCLUDED.chart_signature,
@@ -69,7 +69,7 @@ export async function saveTranscription(chartId, signature, model, text) {
          updated_at = NOW()`,
       [chartId, signature, model || 'gpt-4o', text]
     );
-    console.log(`[saveTranscription] Saved transcription for ${chartId}`);
+    console.log(`[saveTranscription] ✅ Saved to public.ai_chart_transcriptions.transcription_text for ${chartId}`);
   } catch (err) {
     console.error('[saveTranscription] Database error:', {
       message: err.message,
@@ -108,7 +108,7 @@ export async function getTranscriptionByChartId(chartId) {
     const result = await withRetry(async () => {
       return await pool.query(
         `SELECT chart_id, chart_signature, model, transcription_text, created_at, updated_at 
-         FROM ai_chart_transcriptions 
+         FROM public.ai_chart_transcriptions 
          WHERE chart_id = $1 
          LIMIT 1`,
         [chartId]
@@ -305,11 +305,13 @@ export async function upsertTranscriptionSimple({ chartId, text }) {
     console.log(`[DB] transcription_text length: ${safeText.length} chars`);
     console.log(`[DB] transcription_text preview: ${safeText.substring(0, 100)}...`);
     
-    const query = `INSERT INTO ai_chart_transcriptions 
+    const query = `INSERT INTO public.ai_chart_transcriptions 
        (chart_id, chart_signature, model, transcription_text, created_at, updated_at)
        VALUES ($1, $2, $3, $4, NOW(), NOW())
        ON CONFLICT (chart_id) 
        DO UPDATE SET 
+         chart_signature = EXCLUDED.chart_signature,
+         model = EXCLUDED.model,
          transcription_text = EXCLUDED.transcription_text,
          updated_at = NOW()
        RETURNING chart_id, transcription_text, updated_at`;
@@ -329,9 +331,9 @@ export async function upsertTranscriptionSimple({ chartId, text }) {
     console.log(`[DB] Returned updated_at: ${savedRow.updated_at}`);
     
     // 🔍 CRITICAL VERIFICATION: Read back from DB to PROVE the write succeeded
-    console.log(`[DB] 🔍 VERIFYING: Reading back from DB...`);
+    console.log(`[DB] 🔍 VERIFYING: Reading back from public.ai_chart_transcriptions...`);
     const verifyQuery = `SELECT chart_id, transcription_text, updated_at 
-                         FROM ai_chart_transcriptions 
+                         FROM public.ai_chart_transcriptions 
                          WHERE chart_id = $1`;
     const verifyResult = await pool.query(verifyQuery, [safeChartId]);
     
