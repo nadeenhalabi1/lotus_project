@@ -161,21 +161,39 @@ export async function getTranscriptionByChartId(chartId) {
 /**
  * Upsert and return the saved row (new API contract)
  * Always returns the row after saving to DB
+ * ⚠️ CRITICAL: If read-back fails, return the data from the INSERT result instead
  */
 export async function upsertAndReturn({ chartId, signature, model = 'gpt-4o-mini', text }) {
-  const saved = await upsertTranscription({ chartId, signature, model, text });
-  // Read back from DB to get full row with timestamps
-  const row = await getTranscriptionByChartId(chartId);
-  if (!row) {
-    throw new Error('Failed to retrieve saved transcription from DB');
+  // Save to DB first
+  const savedText = await upsertTranscription({ chartId, signature, model, text });
+  
+  // Try to read back from DB to get full row with timestamps
+  // If read-back fails, use the data we just saved
+  try {
+    const row = await getTranscriptionByChartId(chartId);
+    if (row) {
+      return {
+        chart_id: row.chart_id,
+        chart_signature: row.chart_signature,
+        model: row.model,
+        transcription_text: row.transcription_text,
+        created_at: row.created_at || new Date().toISOString(),
+        updated_at: row.updated_at || new Date().toISOString()
+      };
+    }
+  } catch (readErr) {
+    // If read-back fails, don't fail the whole operation - return what we know
+    console.warn(`[upsertAndReturn] Could not read back from DB for ${chartId}, using saved data:`, readErr.message);
   }
+  
+  // Fallback: return data from what we just saved
   return {
-    chart_id: row.chart_id,
-    chart_signature: row.chart_signature,
-    model: row.model,
-    transcription_text: row.transcription_text,
-    created_at: row.created_at || new Date().toISOString(),
-    updated_at: row.updated_at || new Date().toISOString()
+    chart_id: chartId,
+    chart_signature: signature,
+    model: model,
+    transcription_text: savedText || text,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
   };
 }
 
@@ -186,66 +204,29 @@ export async function upsertAndReturn({ chartId, signature, model = 'gpt-4o-mini
  */
 export async function upsertTranscription({ chartId, signature, model = 'gpt-4o-mini', text }) {
   // ⚠️ CRITICAL: Check DATABASE_URL availability
-  if (!DATABASE_URL) {
-    console.error(`[upsertTranscription] ❌ DATABASE_URL not available for chartId: ${chartId}`);
-    console.error(`[upsertTranscription] ❌ Environment variables: DATABASE_URL=${process.env.DATABASE_URL ? 'SET' : 'NOT SET'}`);
+  if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL not available');
   }
   
-  console.log(`[upsertTranscription] ✅ DATABASE_URL is available, proceeding with DB write for ${chartId}`);
-  
   if (!chartId) {
-    console.error(`[upsertTranscription] ❌ chartId is required`);
     throw new Error('chartId is required');
   }
   
   if (!text || !text.trim()) {
-    console.warn(`[upsertTranscription] ⚠️ Warning: Empty transcription text for ${chartId}`);
-    // Don't throw - allow empty text to be saved (might be valid in some cases)
+    // Allow empty text to be saved (might be valid in some cases)
   }
   
   try {
-    console.log(`[upsertTranscription] 🔄 Attempting to upsert transcription for ${chartId}...`);
-    console.log(`[upsertTranscription] Signature: ${signature?.substring(0, 8)}..., Model: ${model}, Text length: ${text?.length || 0}`);
-    
     const pool = getPool();
-    if (!pool) {
-      console.error(`[upsertTranscription] ❌ Database pool is null!`);
-      throw new Error('Database pool not available');
-    }
     
-    // 🔍 DEBUG: Test DB connection before query
-    try {
-      const testResult = await pool.query('SELECT NOW() as current_time');
-      console.log(`[upsertTranscription] ✅ DB connection active. Current time: ${testResult.rows[0]?.current_time}`);
-    } catch (testErr) {
-      console.error(`[upsertTranscription] ❌ DB connection test failed:`, testErr.message);
-      throw new Error(`Database connection test failed: ${testErr.message}`);
-    }
+    // Prepare safe parameters
+    const safeChartId = String(chartId || '').trim();
+    const safeSignature = String(signature || '').trim();
+    const safeModel = String(model || 'gpt-4o-mini').trim();
+    const safeText = String(text || '').trim();
     
-    // 🔍 DEBUG: Check if table exists
-    try {
-      const tableCheck = await pool.query(`
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' 
-          AND table_name = 'ai_chart_transcriptions'
-        ) as table_exists
-      `);
-      const tableExists = tableCheck.rows[0]?.table_exists;
-      console.log(`[upsertTranscription] 🔍 Table 'ai_chart_transcriptions' exists: ${tableExists}`);
-      if (!tableExists) {
-        console.error(`[upsertTranscription] ❌ Table 'ai_chart_transcriptions' does not exist! Run migration first.`);
-        throw new Error('Database table does not exist. Please run migration.');
-      }
-    } catch (tableErr) {
-      console.error(`[upsertTranscription] ❌ Table check failed:`, tableErr.message);
-      // If it's already the "table doesn't exist" error, re-throw it
-      if (tableErr.message.includes('does not exist')) {
-        throw tableErr;
-      }
-      // Otherwise, log but continue - might be a permission issue
-      console.warn(`[upsertTranscription] ⚠️ Could not verify table existence, continuing anyway...`);
+    if (!safeChartId) {
+      throw new Error('chartId is required and cannot be empty');
     }
     
     // 🔍 DEBUG: Log all parameters before query
