@@ -95,6 +95,45 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           }
         } else if (isNotFound) {
           console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text found in DB for this chart (404 handled by queue)`);
+          // Trigger automatic transcription creation if report is already generated
+          // Wait a bit for chart to render, then create transcription
+          setTimeout(async () => {
+            try {
+              const chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
+              if (chartElement) {
+                console.log(`[Reports Chart ${chartId}] Auto-creating transcription for missing chart...`);
+                const isDark = document.documentElement.classList.contains('dark');
+                const canvas = await html2canvas(chartElement, {
+                  backgroundColor: isDark ? '#1f2937' : '#ffffff',
+                  scale: 1,
+                  logging: false,
+                  useCORS: true
+                });
+                
+                const imageUrl = canvas.toDataURL('image/png');
+                
+                // Queue transcription creation
+                await apiQueue.enqueue(
+                  `create-transcription-${chartId}`,
+                  () => chartTranscriptionAPI.startupFill([{
+                    chartId,
+                    topic,
+                    chartData,
+                    imageUrl
+                  }])
+                );
+                
+                console.log(`[Reports Chart ${chartId}] ✅ Transcription creation queued`);
+                
+                // Reload transcription after creation
+                setTimeout(() => {
+                  loadTranscriptionFromDB();
+                }, 3000);
+              }
+            } catch (err) {
+              console.error(`[Reports Chart ${chartId}] Failed to auto-create transcription:`, err);
+            }
+          }, 2000);
         } else {
           console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text found in DB for this chart`);
         }
