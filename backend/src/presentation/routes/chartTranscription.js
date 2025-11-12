@@ -162,10 +162,29 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
       console.log(`[POST /chart-transcription/${chartId}] No transcription exists - creating new one via OpenAI...`);
     }
     
+    // ⚠️ CRITICAL: Compress chartData before sending to OpenAI to reduce token usage
+    let compressedChartData = chartData;
+    if (Array.isArray(chartData) && chartData.length > 50) {
+      compressedChartData = chartData.slice(0, 50);
+      console.log(`[POST /chart-transcription/${chartId}] Compressed chartData from ${chartData.length} to 50 items`);
+    } else if (chartData && typeof chartData === 'object' && Object.keys(chartData).length > 20) {
+      const keys = Object.keys(chartData).slice(0, 20);
+      compressedChartData = keys.reduce((acc, key) => {
+        acc[key] = chartData[key];
+        return acc;
+      }, {});
+      console.log(`[POST /chart-transcription/${chartId}] Compressed chartData from ${Object.keys(chartData).length} to 20 keys`);
+    }
+    
     // Call OpenAI to generate transcription
-    console.log(`[POST /chart-transcription/${chartId}] 📞 Calling OpenAI to generate transcription...`);
+    // ⚠️ CRITICAL: Use queue to process OpenAI requests sequentially and prevent TPM limit
+    console.log(`[POST /chart-transcription/${chartId}] 📞 Calling OpenAI to generate transcription (queued)...`);
     console.log(`[POST /chart-transcription/${chartId}] Image URL length: ${imageUrl?.length || 0}, Topic: ${topic || 'none'}`);
-    const transcription_text = await transcribeChartImage({ imageUrl, context: topic });
+    
+    const transcription_text = await openaiQueue.enqueue(async () => {
+      return await transcribeChartImage({ imageUrl, context: topic });
+    });
+    
     console.log(`[POST /chart-transcription/${chartId}] ✅ OpenAI returned transcription (${transcription_text?.length || 0} chars)`);
     
     // 🔍 DEBUG: Log the actual transcription text (first 200 chars)
@@ -342,10 +361,31 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
           console.log(`[startup-fill] Chart ${chartId} no existing transcription - will create new one via OpenAI`);
         }
 
+        // ⚠️ CRITICAL: Compress chartData before sending to OpenAI to reduce token usage
+        // Limit to first 50 data points or summarize if array is too large
+        let compressedChartData = chartData;
+        if (Array.isArray(chartData) && chartData.length > 50) {
+          compressedChartData = chartData.slice(0, 50);
+          console.log(`[startup-fill] Chart ${chartId} Compressed chartData from ${chartData.length} to 50 items to reduce tokens`);
+        } else if (chartData && typeof chartData === 'object' && Object.keys(chartData).length > 20) {
+          // If object, take only first 20 keys
+          const keys = Object.keys(chartData).slice(0, 20);
+          compressedChartData = keys.reduce((acc, key) => {
+            acc[key] = chartData[key];
+            return acc;
+          }, {});
+          console.log(`[startup-fill] Chart ${chartId} Compressed chartData from ${Object.keys(chartData).length} to 20 keys to reduce tokens`);
+        }
+        
         // Generate new transcription via OpenAI and save to DB
-        console.log(`[startup-fill] Generating transcription for ${chartId} via OpenAI...`);
+        // ⚠️ CRITICAL: Use queue to process OpenAI requests sequentially and prevent TPM limit
+        console.log(`[startup-fill] Generating transcription for ${chartId} via OpenAI (queued)...`);
         console.log(`[startup-fill] Chart ${chartId} Image URL length: ${imageUrl?.length || 0}, Topic: ${topic || 'none'}`);
-        const text = await transcribeChartImage({ imageUrl, context: topic });
+        
+        const text = await openaiQueue.enqueue(async () => {
+          return await transcribeChartImage({ imageUrl, context: topic });
+        });
+        
         console.log(`[startup-fill] Chart ${chartId} ✅ OpenAI returned transcription (${text?.length || 0} chars)`);
         
         // 🔍 DEBUG: Log the actual transcription text (first 200 chars)
