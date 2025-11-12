@@ -294,9 +294,17 @@ const ReportsPage = () => {
   const [chartNarrations, setChartNarrations] = useState({});
   const [reportConclusions, setReportConclusions] = useState(null);
   const [loadingConclusions, setLoadingConclusions] = useState(false);
+  const generatingRef = useRef(false); // Prevent duplicate calls
 
   const handleGenerate = async (reportId) => {
+    // Prevent duplicate calls (debouncing)
+    if (generatingRef.current) {
+      console.log('[Reports] Already generating, skipping duplicate call');
+      return;
+    }
+    
     try {
+      generatingRef.current = true;
       setGenerating(true);
       setError(null);
       setReportData(null);
@@ -497,9 +505,27 @@ const ReportsPage = () => {
         }
       }, 100);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to generate report');
+      // Handle 429 errors with retry logic
+      if (err.response?.status === 429) {
+        console.warn('[Reports] Rate limit (429), waiting before retry...');
+        // Wait and retry once after delay
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        try {
+          const retryResponse = await reportsAPI.generateReport(reportId, { format: 'json' });
+          const report = retryResponse.data.report;
+          setReportData(report);
+          setSelectedReport(reportId);
+          // Continue with transcription creation...
+        } catch (retryErr) {
+          setError('Too many requests. Please wait a moment and try again.');
+          console.error('[Reports] Retry failed:', retryErr);
+        }
+      } else {
+        setError(err.response?.data?.error || 'Failed to generate report');
+      }
     } finally {
       setGenerating(false);
+      generatingRef.current = false;
     }
   };
 

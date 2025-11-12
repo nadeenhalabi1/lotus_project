@@ -54,13 +54,20 @@ api.interceptors.response.use(
       localStorage.removeItem('authToken');
       window.location.href = '/login';
     }
-    // Log errors for debugging
-    console.error('API Error:', {
-      url: error.config?.url,
-      status: error.response?.status,
-      message: error.message,
-      baseURL: API_URL
-    });
+    
+    // Handle 429 errors gracefully - reduce console spam
+    if (error.response?.status === 429) {
+      console.warn(`[API] Rate limit (429) for ${error.config?.url} - request will be retried or cached data will be used`);
+      // Don't log full error details for 429 to reduce console noise
+    } else {
+      // Log errors for debugging (except 429)
+      console.error('API Error:', {
+        url: error.config?.url,
+        status: error.response?.status,
+        message: error.message,
+        baseURL: API_URL
+      });
+    }
     return Promise.reject(error);
   }
 );

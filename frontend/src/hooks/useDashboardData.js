@@ -26,17 +26,27 @@ export const useDashboardData = () => {
         setLastUpdated(persistentCached.lastUpdated);
         setLoading(false);
         // Fetch fresh data in background to update cache, but don't block UI
-        dashboardAPI.getDashboard().then(response => {
-          const dashboardData = response.data;
-          const updatedAt = dashboardData.lastUpdated || new Date().toISOString();
-          // Update persistent cache with fresh data
-          browserCache.setPersistentData('dashboard', {
-            data: dashboardData,
-            lastUpdated: updatedAt,
-          });
-        }).catch(err => {
-          console.warn('[Dashboard] Background refresh failed, keeping cached data:', err);
-        });
+        // Add delay to prevent rate limiting on page load
+        setTimeout(async () => {
+          try {
+            const response = await dashboardAPI.getDashboard();
+            const dashboardData = response.data;
+            const updatedAt = dashboardData.lastUpdated || new Date().toISOString();
+            // Update persistent cache with fresh data
+            browserCache.setPersistentData('dashboard', {
+              data: dashboardData,
+              lastUpdated: updatedAt,
+            });
+          } catch (err) {
+            // Handle 429 errors gracefully - don't spam console
+            if (err.response?.status === 429) {
+              console.warn('[Dashboard] Background refresh rate limited (429), will retry later');
+              // Don't retry immediately - wait longer
+            } else {
+              console.warn('[Dashboard] Background refresh failed, keeping cached data:', err);
+            }
+          }
+        }, 5000); // Wait 5 seconds before background refresh to avoid rate limiting
         return; // Exit early - we have cached data to show
       }
       
