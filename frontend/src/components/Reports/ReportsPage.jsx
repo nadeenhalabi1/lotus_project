@@ -95,13 +95,13 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           }
         } else if (isNotFound) {
           console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text found in DB for this chart (404 handled by queue)`);
-          // Trigger automatic transcription creation if report is already generated
-          // Wait a bit for chart to render, then create transcription
+          // When system opens and transcription is missing - send to OpenAI and save to DB
+          // This is the initial flow: user opens system → all charts go to OpenAI → saved to DB
           setTimeout(async () => {
             try {
               const chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
               if (chartElement) {
-                console.log(`[Reports Chart ${chartId}] Auto-creating transcription for missing chart...`);
+                console.log(`[Reports Chart ${chartId}] 📤 Sending chart to OpenAI for transcription (initial load)...`);
                 const isDark = document.documentElement.classList.contains('dark');
                 const canvas = await html2canvas(chartElement, {
                   backgroundColor: isDark ? '#1f2937' : '#ffffff',
@@ -112,7 +112,7 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
                 
                 const imageUrl = canvas.toDataURL('image/png');
                 
-                // Queue transcription creation
+                // Send to OpenAI via startup-fill (creates transcription and saves to DB)
                 await apiQueue.enqueue(
                   `create-transcription-${chartId}`,
                   () => chartTranscriptionAPI.startupFill([{
@@ -123,17 +123,40 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
                   }])
                 );
                 
-                console.log(`[Reports Chart ${chartId}] ✅ Transcription creation queued`);
+                console.log(`[Reports Chart ${chartId}] ✅ Transcription sent to OpenAI and saved to DB`);
                 
-                // Reload transcription after creation
-                setTimeout(() => {
-                  loadTranscriptionFromDB();
-                }, 3000);
+                // Reload transcription from DB after creation (wait for DB to update)
+                // Try multiple times to ensure transcription is loaded
+                let reloadAttempts = 0;
+                const maxReloadAttempts = 3;
+                const reloadInterval = setInterval(async () => {
+                  reloadAttempts++;
+                  console.log(`[Reports Chart ${chartId}] 🔄 Reloading transcription from DB (attempt ${reloadAttempts}/${maxReloadAttempts})...`);
+                  
+                  try {
+                    await loadTranscriptionFromDB();
+                    // Check if transcription was loaded
+                    if (transcriptionText) {
+                      console.log(`[Reports Chart ${chartId}] ✅ Transcription loaded from DB`);
+                      clearInterval(reloadInterval);
+                    } else if (reloadAttempts >= maxReloadAttempts) {
+                      console.warn(`[Reports Chart ${chartId}] ⚠️ Transcription not loaded after ${maxReloadAttempts} attempts`);
+                      clearInterval(reloadInterval);
+                    }
+                  } catch (err) {
+                    console.error(`[Reports Chart ${chartId}] Failed to reload transcription:`, err);
+                    if (reloadAttempts >= maxReloadAttempts) {
+                      clearInterval(reloadInterval);
+                    }
+                  }
+                }, 5000); // Try every 5 seconds
+              } else {
+                console.warn(`[Reports Chart ${chartId}] Chart element not found, cannot create transcription`);
               }
             } catch (err) {
-              console.error(`[Reports Chart ${chartId}] Failed to auto-create transcription:`, err);
+              console.error(`[Reports Chart ${chartId}] Failed to create transcription:`, err);
             }
-          }, 2000);
+          }, 2000); // Wait 2 seconds for chart to render
         } else {
           console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text found in DB for this chart`);
         }
@@ -401,13 +424,20 @@ const ReportsPage = () => {
                     `check-transcription-${chartId}`,
                     () => chartTranscriptionAPI.getTranscription(chartId)
                   );
-                  if (existingTranscription.data?.data?.text) {
+                  // Check if transcription exists - handle both direct API response and queue response (404 handled)
+                  const transcriptionText = existingTranscription?.data?.data?.text;
+                  const isNotFound = existingTranscription?.data?.data?.notFound === true;
+                  
+                  if (transcriptionText && !isNotFound) {
                     console.log(`[Reports] Chart ${chartId} already has transcription in DB, skipping`);
                     needsTranscription = false;
+                  } else {
+                    console.log(`[Reports] Chart ${chartId} has no transcription in DB (404 or notFound), will create one`);
+                    needsTranscription = true;
                   }
                 } catch (err) {
                   // 404 means no transcription in DB - that's OK, we'll create one
-                  if (err.response?.status === 404) {
+                  if (err.response?.status === 404 || err.message?.includes('Circuit breaker')) {
                     console.log(`[Reports] Chart ${chartId} has no transcription in DB, will create one`);
                     needsTranscription = true;
                   } else if (err.response?.status === 429) {
@@ -416,7 +446,8 @@ const ReportsPage = () => {
                     continue; // Skip this chart if rate limited
                   } else {
                     console.warn(`[Reports] Error checking transcription in DB for ${chartId}:`, err);
-                    continue; // Skip this chart if there's an error
+                    // Assume we need transcription if there's an error
+                    needsTranscription = true;
                   }
                 }
                 

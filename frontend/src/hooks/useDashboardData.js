@@ -298,12 +298,19 @@ export const useDashboardData = () => {
                   
                   // Refresh each chart transcription via OpenAI (always overwrites old one in DB)
                   // This ensures that when data is refreshed, transcriptions are updated with new chart data
+                  // Use queue to prevent rate limiting
                   for (const { chartId, topic, chartData, imageUrl } of chartsWithImages) {
                     try {
-                      // Use refreshTranscription which always calls OpenAI and overwrites DB
+                      // Use refreshTranscription with force=true to always call OpenAI and overwrite DB
                       // This is what we want - new data = new transcription
-                      await chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, chartData);
+                      await apiQueue.enqueue(
+                        `refresh-report-transcription-${chartId}`,
+                        () => chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, chartData, true) // force=true
+                      );
                       console.log(`[Dashboard Refresh] Report chart ${chartId} transcription refreshed with new data`);
+                      
+                      // Wait between charts to prevent rate limiting
+                      await new Promise(resolve => setTimeout(resolve, 2000));
                     } catch (err) {
                       console.error(`[Dashboard Refresh] Failed to refresh transcription for report chart ${chartId}:`, err);
                       // Continue with other charts even if one fails
