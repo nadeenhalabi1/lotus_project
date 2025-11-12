@@ -187,11 +187,54 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
     
     const pool = getPool();
     if (!pool) {
+      console.error(`[upsertTranscription] ❌ Database pool is null!`);
       throw new Error('Database pool not available');
     }
     
-    const result = await pool.query(
-      `INSERT INTO ai_chart_transcriptions 
+    // 🔍 DEBUG: Test DB connection before query
+    try {
+      const testResult = await pool.query('SELECT NOW() as current_time');
+      console.log(`[upsertTranscription] ✅ DB connection active. Current time: ${testResult.rows[0]?.current_time}`);
+    } catch (testErr) {
+      console.error(`[upsertTranscription] ❌ DB connection test failed:`, testErr.message);
+      throw new Error(`Database connection test failed: ${testErr.message}`);
+    }
+    
+    // 🔍 DEBUG: Check if table exists
+    try {
+      const tableCheck = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'ai_chart_transcriptions'
+        ) as table_exists
+      `);
+      const tableExists = tableCheck.rows[0]?.table_exists;
+      console.log(`[upsertTranscription] 🔍 Table 'ai_chart_transcriptions' exists: ${tableExists}`);
+      if (!tableExists) {
+        console.error(`[upsertTranscription] ❌ Table 'ai_chart_transcriptions' does not exist! Run migration first.`);
+        throw new Error('Database table does not exist. Please run migration.');
+      }
+    } catch (tableErr) {
+      console.error(`[upsertTranscription] ❌ Table check failed:`, tableErr.message);
+      // If it's already the "table doesn't exist" error, re-throw it
+      if (tableErr.message.includes('does not exist')) {
+        throw tableErr;
+      }
+      // Otherwise, log but continue - might be a permission issue
+      console.warn(`[upsertTranscription] ⚠️ Could not verify table existence, continuing anyway...`);
+    }
+    
+    // 🔍 DEBUG: Log all parameters before query
+    console.log(`[upsertTranscription] 📝 Query parameters:`, {
+      chartId,
+      signature: signature?.substring(0, 16) + '...',
+      model,
+      textLength: text?.length || 0,
+      textPreview: text?.substring(0, 100) + '...'
+    });
+    
+    const query = `INSERT INTO ai_chart_transcriptions 
        (chart_id, chart_signature, model, transcription_text, updated_at)
        VALUES ($1, $2, $3, $4, NOW())
        ON CONFLICT (chart_id) 
@@ -200,9 +243,22 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
          model = EXCLUDED.model,
          transcription_text = EXCLUDED.transcription_text,
          updated_at = NOW()
-       RETURNING chart_id, updated_at, transcription_text`,
-      [chartId, signature || '', model, text || '']
-    );
+       RETURNING chart_id, updated_at, transcription_text`;
+    
+    console.log(`[upsertTranscription] 🔍 Executing query with params:`, {
+      $1: chartId,
+      $2: signature?.substring(0, 16) + '...',
+      $3: model,
+      $4: `[${text?.length || 0} chars]`
+    });
+    
+    const result = await pool.query(query, [chartId, signature || '', model, text || '']);
+    
+    console.log(`[upsertTranscription] 🔍 Query executed. Result:`, {
+      hasResult: !!result,
+      hasRows: !!(result?.rows),
+      rowCount: result?.rows?.length || 0
+    });
     
     if (result && result.rows && result.rows.length > 0) {
       const row = result.rows[0];

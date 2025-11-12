@@ -155,13 +155,27 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
     
     // Call OpenAI to generate transcription
     console.log(`[POST /chart-transcription/${chartId}] 📞 Calling OpenAI to generate transcription...`);
+    console.log(`[POST /chart-transcription/${chartId}] Image URL length: ${imageUrl?.length || 0}, Topic: ${topic || 'none'}`);
     const transcription_text = await transcribeChartImage({ imageUrl, context: topic });
     console.log(`[POST /chart-transcription/${chartId}] ✅ OpenAI returned transcription (${transcription_text?.length || 0} chars)`);
     
+    // 🔍 DEBUG: Log the actual transcription text (first 200 chars)
+    if (transcription_text) {
+      console.log(`[POST /chart-transcription/${chartId}] Transcription preview: ${transcription_text.substring(0, 200)}...`);
+    }
+    
     if (!transcription_text || !transcription_text.trim()) {
       console.error(`[POST /chart-transcription/${chartId}] ⚠️ WARNING: OpenAI returned empty transcription!`);
+      console.error(`[POST /chart-transcription/${chartId}] transcription_text value:`, transcription_text);
       throw new Error('OpenAI returned empty transcription');
     }
+    
+    // 🔍 DEBUG: Verify we have all required data before DB save
+    console.log(`[AI Save] chartId: ${chartId}`);
+    console.log(`[AI Save] transcription_text length: ${transcription_text?.length || 0}`);
+    console.log(`[AI Save] signature: ${signature?.substring(0, 16)}...`);
+    console.log(`[AI Save] model: ${model}`);
+    console.log(`[AI Save] DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
     
     // Save/update to DB (upsert)
     console.log(`[POST /chart-transcription/${chartId}] 💾 Saving transcription to DB...`);
@@ -169,6 +183,7 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
       const savedText = await upsertTranscription({ chartId, signature, text: transcription_text, model });
       console.log(`[POST /chart-transcription/${chartId}] ✅ Transcription saved to DB successfully`);
       console.log(`[POST /chart-transcription/${chartId}] Saved text length: ${savedText?.length || 0}`);
+      console.log(`[AI Save] ✅ Saved transcription to DB for ${chartId}`);
       
       // Verify the transcription was saved by reading it back from DB
       try {
@@ -270,14 +285,28 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
 
         // Generate new transcription via OpenAI and save to DB
         console.log(`[startup-fill] Generating transcription for ${chartId} via OpenAI...`);
+        console.log(`[startup-fill] Chart ${chartId} Image URL length: ${imageUrl?.length || 0}, Topic: ${topic || 'none'}`);
         const text = await transcribeChartImage({ imageUrl, context: topic });
         console.log(`[startup-fill] Chart ${chartId} ✅ OpenAI returned transcription (${text?.length || 0} chars)`);
         
+        // 🔍 DEBUG: Log the actual transcription text (first 200 chars)
+        if (text) {
+          console.log(`[startup-fill] Chart ${chartId} Transcription preview: ${text.substring(0, 200)}...`);
+        }
+        
         if (!text || !text.trim()) {
           console.error(`[startup-fill] Chart ${chartId} ⚠️ WARNING: OpenAI returned empty transcription!`);
+          console.error(`[startup-fill] Chart ${chartId} text value:`, text);
           results.push({ chartId, status: 'error', error: 'OpenAI returned empty transcription' });
           continue;
         }
+        
+        // 🔍 DEBUG: Verify we have all required data before DB save
+        console.log(`[AI Save] [startup-fill] chartId: ${chartId}`);
+        console.log(`[AI Save] [startup-fill] transcription_text length: ${text?.length || 0}`);
+        console.log(`[AI Save] [startup-fill] signature: ${signature?.substring(0, 16)}...`);
+        console.log(`[AI Save] [startup-fill] model: ${model}`);
+        console.log(`[AI Save] [startup-fill] DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
         
         // Save to DB - DB is the single source of truth
         console.log(`[startup-fill] Chart ${chartId} 💾 Saving transcription to DB...`);
@@ -285,6 +314,7 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
           const savedText = await upsertTranscription({ chartId, signature, text, model });
           console.log(`[startup-fill] Chart ${chartId} ✅ Transcription saved to DB successfully`);
           console.log(`[startup-fill] Chart ${chartId} Saved text length: ${savedText?.length || 0}`);
+          console.log(`[AI Save] ✅ Saved transcription to DB for ${chartId} (startup-fill)`);
           
           // Verify the transcription was saved by reading it back from DB
           try {
@@ -357,13 +387,27 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       console.log(`[refresh] Chart ${chartId} computed signature: ${signature.substring(0, 8)}...`);
       
       console.log(`[refresh] Chart ${chartId} 📞 Calling OpenAI to generate transcription...`);
+      console.log(`[refresh] Chart ${chartId} Image URL length: ${imageUrl?.length || 0}, Topic: ${topic || 'none'}`);
       const text = await transcribeChartImage({ imageUrl, context: topic });
       console.log(`[refresh] Chart ${chartId} ✅ OpenAI returned transcription (${text?.length || 0} chars)`);
       
+      // 🔍 DEBUG: Log the actual transcription text (first 200 chars)
+      if (text) {
+        console.log(`[refresh] Chart ${chartId} Transcription preview: ${text.substring(0, 200)}...`);
+      }
+      
       if (!text || !text.trim()) {
         console.error(`[refresh] Chart ${chartId} ⚠️ WARNING: OpenAI returned empty transcription!`);
+        console.error(`[refresh] Chart ${chartId} text value:`, text);
         throw new Error('OpenAI returned empty transcription');
       }
+      
+      // 🔍 DEBUG: Verify we have all required data before DB save
+      console.log(`[AI Save] [refresh] chartId: ${chartId}`);
+      console.log(`[AI Save] [refresh] transcription_text length: ${text?.length || 0}`);
+      console.log(`[AI Save] [refresh] signature: ${signature?.substring(0, 16)}...`);
+      console.log(`[AI Save] [refresh] model: ${model}`);
+      console.log(`[AI Save] [refresh] DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
       
       // Save to DB - DB is the single source of truth (overwrites existing)
       console.log(`[refresh] Chart ${chartId} 💾 Saving transcription to DB...`);
@@ -371,6 +415,7 @@ router.post('/chart-transcription/refresh', async (req, res) => {
         const savedText = await upsertTranscription({ chartId, signature, text, model });
         console.log(`[refresh] Chart ${chartId} ✅ Transcription saved to DB successfully`);
         console.log(`[refresh] Chart ${chartId} Saved text length: ${savedText?.length || 0}`);
+        console.log(`[AI Save] ✅ Saved transcription to DB for ${chartId} (refresh)`);
         
         // Verify the transcription was saved by reading it back from DB
         try {
@@ -428,13 +473,27 @@ router.post('/chart-transcription/refresh', async (req, res) => {
     
     // Generate new transcription via OpenAI (data changed)
     console.log(`[refresh] Chart ${chartId} 📞 Calling OpenAI to generate transcription...`);
+    console.log(`[refresh] Chart ${chartId} Image URL length: ${imageUrl?.length || 0}, Topic: ${topic || 'none'}`);
     const text = await transcribeChartImage({ imageUrl, context: topic });
     console.log(`[refresh] Chart ${chartId} ✅ OpenAI returned transcription (${text?.length || 0} chars)`);
     
+    // 🔍 DEBUG: Log the actual transcription text (first 200 chars)
+    if (text) {
+      console.log(`[refresh] Chart ${chartId} Transcription preview: ${text.substring(0, 200)}...`);
+    }
+    
     if (!text || !text.trim()) {
       console.error(`[refresh] Chart ${chartId} ⚠️ WARNING: OpenAI returned empty transcription!`);
+      console.error(`[refresh] Chart ${chartId} text value:`, text);
       throw new Error('OpenAI returned empty transcription');
     }
+    
+    // 🔍 DEBUG: Verify we have all required data before DB save
+    console.log(`[AI Save] [refresh] chartId: ${chartId}`);
+    console.log(`[AI Save] [refresh] transcription_text length: ${text?.length || 0}`);
+    console.log(`[AI Save] [refresh] signature: ${signature?.substring(0, 16)}...`);
+    console.log(`[AI Save] [refresh] model: ${model}`);
+    console.log(`[AI Save] [refresh] DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
     
     // Save to DB - DB is the single source of truth (overwrites existing)
     console.log(`[refresh] Chart ${chartId} 💾 Saving transcription to DB...`);
@@ -442,6 +501,7 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       const savedText = await upsertTranscription({ chartId, signature, text, model });
       console.log(`[refresh] Chart ${chartId} ✅ Transcription saved to DB successfully`);
       console.log(`[refresh] Chart ${chartId} Saved text length: ${savedText?.length || 0}`);
+      console.log(`[AI Save] ✅ Saved transcription to DB for ${chartId} (refresh)`);
       
       // Verify the transcription was saved by reading it back from DB
       try {
