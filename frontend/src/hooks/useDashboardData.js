@@ -270,10 +270,24 @@ export const useDashboardData = () => {
                         const reportTitle = document.querySelector('h2')?.textContent || 'Report';
                         const topic = `${reportTitle} - ${chartTitle}`;
                         
-                        // Chart data will be computed by backend from the image
-                        // The signature will be computed from topic + chartData
-                        // If signature changed (new data), OpenAI will be called automatically
-                        const chartData = {}; // Empty - backend will compute from image
+                        // Try to get chart data from the report data stored in state
+                        // We need the actual chart data to compute the correct signature
+                        // If we can't get it, use empty object (backend will still work with force=true)
+                        let chartData = {};
+                        
+                        // Try to find chart data from report data (if Reports page has it stored)
+                        // Look for report data in window or try to extract from chart element
+                        try {
+                          // Try to get data from recharts component if available
+                          const rechartsWrapper = chartElement.querySelector('.recharts-wrapper');
+                          if (rechartsWrapper) {
+                            // Try to extract data from recharts (if accessible)
+                            // This is a fallback - ideally we'd have access to report.charts
+                            console.log(`[Dashboard Refresh] Chart ${chartId} - using empty chartData (will use force=true)`);
+                          }
+                        } catch (err) {
+                          console.warn(`[Dashboard Refresh] Could not extract chart data for ${chartId}:`, err);
+                        }
                         
                         chartsForFill.push({
                           chartId,

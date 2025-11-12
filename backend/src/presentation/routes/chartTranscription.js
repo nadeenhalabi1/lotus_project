@@ -245,34 +245,49 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       });
     }
 
-    const signature = computeChartSignature(topic || '', chartData || {});
-    
-    // Check if transcription exists and signature matches (unless force=true)
-    if (!force) {
-      try {
-        const existing = await getTranscriptionByChartId(chartId);
-        if (existing && existing.chart_signature === signature) {
-          console.log(`[refresh] Chart ${chartId} data unchanged (signature matches) - using existing transcription`);
-          return res.json({ 
-            ok: true, 
-            source: 'db', // From DB, no OpenAI call
-            chartId, 
-            signature, 
-            text: existing.transcription_text,
-            unchanged: true
-          });
-        } else {
-          console.log(`[refresh] Chart ${chartId} data changed (signature mismatch) - generating new transcription`);
-        }
-      } catch (err) {
-        // If transcription doesn't exist, continue to create new one
-        console.log(`[refresh] Chart ${chartId} has no existing transcription - will create new one`);
-      }
-    } else {
+    // If force=true, always generate new transcription (ignore signature check)
+    // This is used when user explicitly clicks "Refresh Data" - we want new transcription for new data
+    if (force) {
       console.log(`[refresh] Chart ${chartId} force=true - generating new transcription regardless of signature`);
+      // Generate new transcription via OpenAI
+      const signature = computeChartSignature(topic || '', chartData || {});
+      const text = await transcribeChartImage({ imageUrl, context: topic });
+      // Save to DB - DB is the single source of truth (overwrites existing)
+      await upsertTranscription({ chartId, signature, text, model: 'gpt-4o' });
+      
+      return res.json({ 
+        ok: true, 
+        source: 'ai', // From OpenAI
+        chartId, 
+        signature, 
+        text 
+      });
     }
     
-    // Generate new transcription via OpenAI (data changed or force=true)
+    // If force=false, check signature to see if data changed
+    const signature = computeChartSignature(topic || '', chartData || {});
+    
+    try {
+      const existing = await getTranscriptionByChartId(chartId);
+      if (existing && existing.chart_signature === signature) {
+        console.log(`[refresh] Chart ${chartId} data unchanged (signature matches) - using existing transcription`);
+        return res.json({ 
+          ok: true, 
+          source: 'db', // From DB, no OpenAI call
+          chartId, 
+          signature, 
+          text: existing.transcription_text,
+          unchanged: true
+        });
+      } else {
+        console.log(`[refresh] Chart ${chartId} data changed (signature mismatch) - generating new transcription`);
+      }
+    } catch (err) {
+      // If transcription doesn't exist, continue to create new one
+      console.log(`[refresh] Chart ${chartId} has no existing transcription - will create new one`);
+    }
+    
+    // Generate new transcription via OpenAI (data changed)
     const text = await transcribeChartImage({ imageUrl, context: topic });
     // Save to DB - DB is the single source of truth (overwrites existing)
     await upsertTranscription({ chartId, signature, text, model: 'gpt-4o' });
