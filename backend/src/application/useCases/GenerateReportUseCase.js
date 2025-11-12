@@ -61,20 +61,23 @@ export class GenerateReportUseCase {
     // Get latest entries from cache
     const latestEntries = await this.cacheRepository.getLatestEntries();
     
-    // Get dashboard charts and combined analytics - use SAME data source as dashboard
+    // Get dashboard charts and combined analytics
     const dashboardData = await this.getDashboardUseCase.execute();
     const combinedAnalytics = await this.getCombinedAnalyticsUseCase.execute();
     
     // Aggregate and format data based on report type
     const aggregated = this.aggregateData(latestEntries, reportType);
 
-    // Use ALL charts from dashboard and combined analytics - ensure same charts appear everywhere
-    // This ensures charts in dashboard, BOX, and reports are identical with same data
-    const allCharts = [...dashboardData.charts, ...combinedAnalytics.charts];
+    // Get relevant charts for this report type
+    const relevantCharts = this.getRelevantCharts(
+      dashboardData.charts,
+      combinedAnalytics.charts,
+      reportType
+    );
 
     return {
       executiveSummary: this.generateExecutiveSummary(aggregated, reportType, latestEntries),
-      charts: allCharts, // Use all charts - same as dashboard/BOX
+      charts: relevantCharts,
       dataTable: this.generateDataTable(aggregated, reportType),
       rawData: this.getRawDataForReport(latestEntries, reportType)
     };
