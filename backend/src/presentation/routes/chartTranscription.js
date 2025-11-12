@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { findByChartId, upsertAndReturn } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
+import { findByChartId, upsertAndReturn, getTranscriptionByChartId, upsertTranscriptionSimple } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
 import { computeChartSignature } from '../../utils/chartSignature.js';
 import { transcribeChartImage } from '../../application/services/transcribeChartService.js';
 import { openaiQueue } from '../../utils/openaiQueue.js';
@@ -251,6 +251,74 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
 });
 
 /**
+ * POST /api/v1/ai/chart-transcription/startup
+ * New workflow: Sequentially transcribe all charts on first load
+ * body: { charts: [{ chartId, imageUrl, context? }] }
+ * 
+ * - Processes charts sequentially (one at a time) to prevent OpenAI rate limits
+ * - Only saves transcription if it doesn't already exist (skips if exists)
+ * - Each chart: Check if exists → If not, OpenAI call → Save to DB → Wait → Next chart
+ */
+router.post('/chart-transcription/startup', async (req, res) => {
+  const { charts } = req.body || {};
+  
+  if (!Array.isArray(charts)) {
+    return res.status(400).json({ ok: false, error: 'charts[] required' });
+  }
+
+  console.log(`[startup] Processing ${charts.length} charts sequentially...`);
+  const results = [];
+
+  // Process charts sequentially (one at a time)
+  for (let i = 0; i < charts.length; i++) {
+    const c = charts[i];
+    
+    if (!c?.chartId || !c?.imageUrl) {
+      results.push({ chartId: c?.chartId || 'unknown', status: 'skip-invalid' });
+      continue;
+    }
+
+    const { chartId, imageUrl, context } = c;
+
+    try {
+      // Check if transcription already exists
+      const existing = await getTranscriptionByChartId(chartId);
+      if (existing) {
+        console.log(`[startup] Chart ${chartId} already has transcription, skipping`);
+        results.push({ chartId, status: 'exists' });
+        continue;
+      }
+
+      // Add delay between charts (except first)
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+
+      // Call OpenAI to get transcription
+      console.log(`[startup] Chart ${i + 1}/${charts.length}: Calling OpenAI for ${chartId}...`);
+      const text = await openaiQueue.enqueue(async () => {
+        return await transcribeChartImage({ imageUrl, context });
+      });
+
+      if (!text || !text.trim()) {
+        results.push({ chartId, status: 'error', error: 'OpenAI returned empty transcription' });
+        continue;
+      }
+
+      // Save to DB
+      await upsertTranscriptionSimple({ chartId, text });
+      console.log(`[startup] Chart ${chartId} saved to DB`);
+      results.push({ chartId, status: 'created' });
+    } catch (err) {
+      console.error(`[startup] Error for chart ${chartId}:`, err.message);
+      results.push({ chartId, status: 'error', error: err.message });
+    }
+  }
+
+  res.json({ ok: true, results });
+});
+
+/**
  * POST /api/v1/ai/chart-transcription/startup-fill
  * Startup ingest: For each chart, if no row exists OR signature changed → call OpenAI and upsert
  * body: { charts: [{ chartId, topic?, chartData, imageUrl }] }
@@ -478,13 +546,73 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
 
 /**
  * POST /api/v1/ai/chart-transcription/refresh
+ * New workflow: Always overwrite transcriptions when data changes
+ * body: { charts: [{ chartId, imageUrl, context? }] }
+ * 
+ * - Processes charts sequentially (one at a time) to prevent OpenAI rate limits
+ * - Always calls OpenAI and overwrites existing transcription
+ * - Each chart: OpenAI call → Save to DB (overwrite) → Wait → Next chart
+ */
+router.post('/chart-transcription/refresh', async (req, res) => {
+  const { charts } = req.body || {};
+  
+  if (!Array.isArray(charts)) {
+    return res.status(400).json({ ok: false, error: 'charts[] required' });
+  }
+
+  console.log(`[refresh] Processing ${charts.length} charts sequentially (always overwrite)...`);
+  const results = [];
+
+  // Process charts sequentially (one at a time)
+  for (let i = 0; i < charts.length; i++) {
+    const c = charts[i];
+    
+    if (!c?.chartId || !c?.imageUrl) {
+      results.push({ chartId: c?.chartId || 'unknown', status: 'skip-invalid' });
+      continue;
+    }
+
+    const { chartId, imageUrl, context } = c;
+
+    try {
+      // Add delay between charts (except first)
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+
+      // Always call OpenAI to get new transcription
+      console.log(`[refresh] Chart ${i + 1}/${charts.length}: Calling OpenAI for ${chartId}...`);
+      const text = await openaiQueue.enqueue(async () => {
+        return await transcribeChartImage({ imageUrl, context });
+      });
+
+      if (!text || !text.trim()) {
+        results.push({ chartId, status: 'error', error: 'OpenAI returned empty transcription' });
+        continue;
+      }
+
+      // Save to DB (always overwrite)
+      await upsertTranscriptionSimple({ chartId, text });
+      console.log(`[refresh] Chart ${chartId} updated in DB`);
+      results.push({ chartId, status: 'updated' });
+    } catch (err) {
+      console.error(`[refresh] Error for chart ${chartId}:`, err.message);
+      results.push({ chartId, status: 'error', error: err.message });
+    }
+  }
+
+  res.json({ ok: true, results });
+});
+
+/**
+ * POST /api/v1/ai/chart-transcription/refresh (legacy - kept for compatibility)
  * Refresh flow: Checks if data changed (by signature), only calls OpenAI if data changed
  * body: { chartId: string, topic?: string, chartData: any, imageUrl: string, force?: boolean }
  * 
  * If force=true, always calls OpenAI (for explicit refresh requests)
  * If force=false or undefined, checks signature - only calls OpenAI if signature changed
  */
-router.post('/chart-transcription/refresh', async (req, res) => {
+router.post('/chart-transcription/refresh-legacy', async (req, res) => {
   try {
     const { chartId, topic, chartData, imageUrl, force, model = 'gpt-4o-mini' } = req.body || {};
     

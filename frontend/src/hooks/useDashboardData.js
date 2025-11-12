@@ -264,47 +264,31 @@ export const useDashboardData = () => {
               }
             }
             
-            // Send all charts to OpenAI via startup-fill
-            // ⚠️ CRITICAL: On first load, we ALWAYS call OpenAI (force=true) to ensure fresh transcriptions
+            // Send all charts to OpenAI via /startup endpoint
+            // New workflow: Sequential processing, only saves if transcription doesn't exist
             console.log(`[Dashboard Startup] 📊 Summary: Prepared ${chartsForStartupFill.length} charts out of ${dashboardData.charts.length} total charts`);
             
             if (chartsForStartupFill.length > 0) {
-              console.log(`[Dashboard Startup] 📤 Sending ${chartsForStartupFill.length} charts to OpenAI via startup-fill (force=true for first load)...`);
+              console.log(`[Dashboard Startup] 📤 Sending ${chartsForStartupFill.length} charts to OpenAI via /startup endpoint...`);
               console.log(`[Dashboard Startup] Chart IDs being sent:`, chartsForStartupFill.map(c => c.chartId));
               
               try {
-                // ⚠️ CRITICAL: Process each chart individually to ensure DB writes
-                // Use new API contract: POST → DB → GET from DB
-                console.log(`[Dashboard Startup] 🔄 Processing ${chartsForStartupFill.length} charts individually...`);
+                // Prepare charts array for /startup endpoint
+                const chartsForAPI = chartsForStartupFill.map(chart => ({
+                  chartId: chart.chartId,
+                  imageUrl: chart.imageUrl,
+                  context: chart.topic || chart.chartId
+                }));
                 
-                for (let i = 0; i < chartsForStartupFill.length; i++) {
-                  const chart = chartsForStartupFill[i];
-                  try {
-                    // POST: OpenAI → DB (UPSERT) → Returns saved row
-                    await chartTranscriptionAPI.createOrUpdateTranscription(
-                      chart.chartId,
-                      chart.topic,
-                      chart.chartData,
-                      chart.imageUrl,
-                      chart.model || 'gpt-4o-mini',
-                      true // forceRecompute=true: always generate new transcription on first load
-                    );
-                    
-                    // GET: Fetch from DB (DB is the single source of truth)
-                    const { data } = await chartTranscriptionAPI.getTranscription(chart.chartId);
-                    console.log(`[Dashboard Startup] ✅ Chart ${chart.chartId} saved and fetched from DB (${data.transcription_text?.length || 0} chars)`);
-                    
-                    // ⚠️ CRITICAL: Add delay between charts to prevent rate limits
-                    // The backend also adds delays, so total delay is ~2-3 seconds between charts
-                    if (i < chartsForStartupFill.length - 1) {
-                      const delayMs = 800; // 0.8 seconds between charts (backend adds another 0.8s, total ~1.6s)
-                      console.log(`[Dashboard Startup] ⏳ Waiting ${delayMs}ms before processing next chart (${i + 2}/${chartsForStartupFill.length})...`);
-                      await new Promise(resolve => setTimeout(resolve, delayMs));
-                    }
-                  } catch (err) {
-                    console.error(`[Dashboard Startup] ❌ Failed for chart ${chart.chartId}:`, err);
-                    // Continue with other charts
-                  }
+                // Call /startup endpoint - processes charts sequentially, only saves if not exists
+                const { data } = await chartTranscriptionAPI.startup(chartsForAPI);
+                console.log(`[Dashboard Startup] ✅ Startup completed:`, data);
+                
+                if (data.results) {
+                  const created = data.results.filter(r => r.status === 'created').length;
+                  const exists = data.results.filter(r => r.status === 'exists').length;
+                  const errors = data.results.filter(r => r.status === 'error').length;
+                  console.log(`[Dashboard Startup] Results: ${created} created, ${exists} already existed, ${errors} errors`);
                 }
                 
                 console.log(`[Dashboard Startup] ✅ All charts processed and saved to DB`);
@@ -476,7 +460,7 @@ export const useDashboardData = () => {
                 if (reportChartElements.length > 0) {
                   console.log(`[Dashboard Refresh] Found ${reportChartElements.length} report charts to refresh`);
                 
-                // Prepare charts array for startup-fill (which handles signature check and OpenAI call)
+                // Prepare charts array for /refresh endpoint (always overwrites)
                 // Capture all chart images first (these represent the NEW charts with NEW data)
                 const chartsForFill = [];
                 
@@ -542,25 +526,21 @@ export const useDashboardData = () => {
                 if (chartsWithImages.length > 0) {
                   console.log(`[Dashboard Refresh] Refreshing ${chartsWithImages.length} report chart transcriptions with new data...`);
                   
-                  // Refresh each chart transcription via OpenAI (always overwrites old one in DB)
-                  // This ensures that when data is refreshed, transcriptions are updated with new chart data
-                  // Use queue to prevent rate limiting
-                  for (const { chartId, topic, chartData, imageUrl } of chartsWithImages) {
-                    try {
-                      // Use refreshTranscription with force=true to always call OpenAI and overwrite DB
-                      // This is what we want - new data = new transcription
-                      await apiQueue.enqueue(
-                        `refresh-report-transcription-${chartId}`,
-                        () => chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, chartData, true) // force=true
-                      );
-                      console.log(`[Dashboard Refresh] Report chart ${chartId} transcription refreshed with new data`);
-                      
-                      // Wait between charts to prevent rate limiting
-                      await new Promise(resolve => setTimeout(resolve, 2000));
-                    } catch (err) {
-                      console.error(`[Dashboard Refresh] Failed to refresh transcription for report chart ${chartId}:`, err);
-                      // Continue with other charts even if one fails
-                    }
+                  // Prepare charts array for /refresh endpoint
+                  const chartsForAPI = chartsWithImages.map(({ chartId, topic, imageUrl }) => ({
+                    chartId,
+                    imageUrl,
+                    context: topic || chartId
+                  }));
+                  
+                  // Call /refresh endpoint - processes charts sequentially, always overwrites
+                  const { data } = await chartTranscriptionAPI.refresh(chartsForAPI);
+                  console.log(`[Dashboard Refresh] ✅ Report charts refresh completed:`, data);
+                  
+                  if (data.results) {
+                    const updated = data.results.filter(r => r.status === 'updated').length;
+                    const errors = data.results.filter(r => r.status === 'error').length;
+                    console.log(`[Dashboard Refresh] Report charts results: ${updated} updated, ${errors} errors`);
                   }
                   
                   console.log(`[Dashboard Refresh] All report chart transcriptions refreshed successfully`);

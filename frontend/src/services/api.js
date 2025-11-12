@@ -168,6 +168,24 @@ export const chartTranscriptionAPI = {
     return chartTranscriptionAPI.createOrUpdateTranscription(chartId, topic, chartData, imageUrl, model, false);
   },
   
+  /**
+   * POST /startup: Sequentially transcribe charts on first load
+   * Only saves if transcription doesn't exist
+   * Body: { charts: [{ chartId, imageUrl, context? }] }
+   */
+  startup: (charts) => {
+    return api.post('/ai/chart-transcription/startup', { charts });
+  },
+  
+  /**
+   * POST /refresh: Always overwrite transcriptions when data changes
+   * Body: { charts: [{ chartId, imageUrl, context? }] }
+   */
+  refresh: (charts) => {
+    return api.post('/ai/chart-transcription/refresh', { charts });
+  },
+  
+  // Legacy methods (kept for backward compatibility)
   startupFill: (charts, force = false) => {
     return api.post('/ai/chart-transcription/startup-fill', { charts, force });
   },
@@ -181,7 +199,7 @@ export const chartTranscriptionAPI = {
       force,
       model
     };
-    return api.post('/ai/chart-transcription/refresh', payload);
+    return api.post('/ai/chart-transcription/refresh-legacy', payload);
   },
 };
 

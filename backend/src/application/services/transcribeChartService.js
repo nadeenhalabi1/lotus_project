@@ -8,9 +8,13 @@ const openai = process.env.OPENAI_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_KEY })
   : null;
 
-// ⚠️ CRITICAL: Keep prompt minimal to reduce token usage
-// Request concise summary (3-4 sentences max) to minimize output tokens
-const SYSTEM_PROMPT = `Summarize this chart in 3-4 concise sentences. Focus on key trends and patterns.`.trim();
+// System prompt for chart transcription
+// Request: concise title + 3-6 bullet points with insights
+const SYSTEM_PROMPT = `You are a visual data analyst. You receive chart images and must describe them clearly.
+Your output should include:
+- One concise title
+- 3–6 short bullet points summarizing insights
+- Avoid made-up numbers; use "approximately" if unclear.`.trim();
 
 /**
  * Transcribe chart image using OpenAI Vision API
@@ -81,7 +85,7 @@ export async function transcribeChartImage({ imageUrl, context }) {
             ]
           }
         ],
-        max_tokens: 250 // Reduced to 250 to minimize output tokens and prevent rate limits
+        max_tokens: 400 // Increased to 400 for better quality transcriptions
       });
     }, 3);
 

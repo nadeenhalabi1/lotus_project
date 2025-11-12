@@ -275,6 +275,50 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o-
 }
 
 /**
+ * Simple upsert - only chartId and text (for new workflow)
+ * updated_at is automatically updated by trigger
+ */
+export async function upsertTranscriptionSimple({ chartId, text }) {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL not available');
+  }
+  
+  if (!chartId) {
+    throw new Error('chartId is required');
+  }
+  
+  if (!text || !text.trim()) {
+    throw new Error('text is required');
+  }
+  
+  try {
+    const pool = getPool();
+    const safeChartId = String(chartId || '').trim();
+    const safeText = String(text || '').trim();
+    
+    const query = `INSERT INTO ai_chart_transcriptions 
+       (chart_id, transcription_text)
+       VALUES ($1, $2)
+       ON CONFLICT (chart_id) 
+       DO UPDATE SET transcription_text = EXCLUDED.transcription_text`;
+    
+    await withRetry(async () => {
+      return await pool.query(query, [safeChartId, safeText]);
+    }, 3);
+    
+    return true;
+  } catch (err) {
+    console.error('[upsertTranscriptionSimple] Database error:', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      chartId
+    });
+    throw err;
+  }
+}
+
+/**
  * Optional: delete by chart
  */
 export async function deleteTranscriptionByChartId(chartId) {
