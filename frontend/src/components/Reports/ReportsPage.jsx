@@ -457,66 +457,9 @@ const ReportsPage = () => {
                 window.dispatchEvent(new CustomEvent('reportTranscriptionsRefreshed'));
               }, 10000); // Increased delay to allow queue to process
             } else {
-              console.log(`[Reports] All charts already have transcriptions in DB`);
-              
-              // Even if all charts have transcriptions, refresh them to ensure they match current data
-              // This is similar to what "Refresh Data" button does
-              console.log(`[Reports] Refreshing all chart transcriptions to match current data...`);
-              
-              // Refresh transcriptions for all charts (similar to dashboard refresh)
-              setTimeout(async () => {
-                try {
-                  const reportCharts = document.querySelectorAll('[data-chart-id][data-chart-only="true"]');
-                  console.log(`[Reports] Found ${reportCharts.length} charts to refresh transcriptions for`);
-                  
-                  for (let i = 0; i < reportCharts.length; i++) {
-                    const chartElement = reportCharts[i];
-                    const chartCard = chartElement.closest('[data-chart-id]');
-                    const chartId = chartCard?.getAttribute('data-chart-id');
-                    
-                    if (!chartId) continue;
-                    
-                    // Find the chart data from reportData
-                    const chart = report.charts.find(c => (c.id || `chart-${report.charts.indexOf(c)}`) === chartId);
-                    if (!chart) continue;
-                    
-                    try {
-                      // Capture chart image
-                      const isDark = document.documentElement.classList.contains('dark');
-                      const canvas = await html2canvas(chartElement, {
-                        backgroundColor: isDark ? '#1f2937' : '#ffffff',
-                        scale: 1,
-                        logging: false,
-                        useCORS: true
-                      });
-                      
-                      const imageUrl = canvas.toDataURL('image/png');
-                      const topic = `${report.executiveSummary?.title || 'Report'} - ${chart.title || chartId}`;
-                      
-                      // Refresh transcription through queue
-                      await apiQueue.enqueue(
-                        `refresh-transcription-${chartId}`,
-                        () => chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, chart.data || {}, true) // force=true to refresh
-                      );
-                      
-                      console.log(`[Reports] Refreshed transcription for chart ${chartId}`);
-                      
-                      // Wait between charts to prevent rate limiting
-                      await new Promise(resolve => setTimeout(resolve, 2000));
-                    } catch (err) {
-                      console.error(`[Reports] Failed to refresh transcription for ${chartId}:`, err);
-                      // Continue with next chart
-                    }
-                  }
-                  
-                  // Trigger reload of transcriptions after refresh
-                  setTimeout(() => {
-                    window.dispatchEvent(new CustomEvent('reportTranscriptionsRefreshed'));
-                  }, 5000);
-                } catch (err) {
-                  console.error('[Reports] Failed to refresh chart transcriptions:', err);
-                }
-              }, 5000); // Wait 5 seconds for charts to render
+              console.log(`[Reports] All charts already have transcriptions in DB - no action needed`);
+              // Don't refresh existing transcriptions - only create new ones for missing charts
+              // Refresh Data button is responsible for refreshing transcriptions
             }
           } catch (err) {
             console.error('[Reports] Failed to create transcriptions:', err);
