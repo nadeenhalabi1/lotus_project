@@ -437,14 +437,10 @@ const ReportsPage = () => {
                 try {
                   console.log(`[Reports] Queuing transcription creation for chart ${i + 1}/${chartsForFill.length}: ${chart.chartId}`);
                   
-                  // Queue each chart individually with delay
+                  // Queue each chart individually - queue handles delays automatically
                   await apiQueue.enqueue(
                     `create-transcription-${chart.chartId}`,
-                    async () => {
-                      // Wait before processing to prevent rate limiting
-                      await new Promise(resolve => setTimeout(resolve, 2000));
-                      return await chartTranscriptionAPI.startupFill([chart]);
-                    }
+                    () => chartTranscriptionAPI.startupFill([chart])
                   );
                   
                   console.log(`[Reports] Chart ${chart.chartId} transcription queued successfully`);
