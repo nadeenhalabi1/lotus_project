@@ -118,19 +118,44 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
                 const imageUrl = canvas.toDataURL('image/png');
                 
                 // Send to OpenAI via startup-fill (creates transcription and saves to DB)
-                const startupFillResult = await apiQueue.enqueue(
-                  `create-transcription-${chartId}`,
-                  () => chartTranscriptionAPI.startupFill([{
-                    chartId,
-                    topic,
-                    chartData,
-                    imageUrl
-                  }])
-                );
-                
-                console.log(`[Reports Chart ${chartId}] ✅ Transcription sent to OpenAI and saved to DB`, startupFillResult?.data);
+                console.log(`[Reports Chart ${chartId}] 📤 Calling startupFill API...`);
+                let startupFillResult;
+                try {
+                  startupFillResult = await apiQueue.enqueue(
+                    `create-transcription-${chartId}`,
+                    () => chartTranscriptionAPI.startupFill([{
+                      chartId,
+                      topic,
+                      chartData,
+                      imageUrl
+                    }])
+                  );
+                  
+                  console.log(`[Reports Chart ${chartId}] ✅ Transcription sent to OpenAI and saved to DB`, startupFillResult?.data);
+                  
+                  // Check if startupFill was successful
+                  if (startupFillResult?.data?.ok === false) {
+                    console.error(`[Reports Chart ${chartId}] ❌ startupFill failed:`, startupFillResult?.data?.error);
+                    return; // Exit early if startupFill failed
+                  }
+                  
+                  // Check if the result shows the chart was processed
+                  const results = startupFillResult?.data?.results || [];
+                  const chartResult = results.find(r => r.chartId === chartId);
+                  if (chartResult) {
+                    console.log(`[Reports Chart ${chartId}] 📊 Chart processing result:`, chartResult);
+                    if (chartResult.status === 'error') {
+                      console.error(`[Reports Chart ${chartId}] ❌ Error creating transcription:`, chartResult.error);
+                      return; // Exit early if there was an error
+                    }
+                  }
+                } catch (err) {
+                  console.error(`[Reports Chart ${chartId}] ❌ Failed to call startupFill:`, err);
+                  return; // Exit early if startupFill threw an error
+                }
                 
                 // Wait a moment for DB to be updated (OpenAI call + DB write)
+                console.log(`[Reports Chart ${chartId}] ⏳ Waiting 2 seconds for DB to update...`);
                 await new Promise(resolve => setTimeout(resolve, 2000));
                 
                 // Function to reload transcription from DB
