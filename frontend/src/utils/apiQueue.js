@@ -182,7 +182,16 @@ class APIQueue {
             // 404 is NOT a failure - it means no transcription exists (expected state)
             if (error.response?.status === 404) {
               // Don't record as failure - 404 is expected when transcription doesn't exist
-              result = { data: { data: { text: null } } }; // Return empty result for 404
+              // Return result that indicates no transcription found
+              result = { 
+                data: { 
+                  data: { 
+                    text: null,
+                    notFound: true 
+                  } 
+                } 
+              };
+              // Don't record as success or failure - 404 is neutral
               break;
             }
             

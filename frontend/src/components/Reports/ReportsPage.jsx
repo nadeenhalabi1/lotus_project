@@ -64,7 +64,10 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           `transcription-${chartId}`, // Unique key to prevent duplicate requests
           () => chartTranscriptionAPI.getTranscription(chartId, topic, chartData)
         );
-        const dbTranscriptionText = res.data.data?.text || null;
+        
+        // Handle response - could be from queue (404 handled) or direct API call
+        const dbTranscriptionText = res?.data?.data?.text || null;
+        const isNotFound = res?.data?.data?.notFound === true;
         
         // Always set what's in DB (even if null) - this ensures sync with DB
         // NO local caching - DB is the single source of truth
@@ -79,6 +82,8 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           if (onNarrationReady) {
             onNarrationReady(chartId, dbTranscriptionText);
           }
+        } else if (isNotFound) {
+          console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text found in DB for this chart (404 handled by queue)`);
         } else {
           console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text found in DB for this chart`);
         }
@@ -132,12 +137,13 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           console.log(`[Reports Chart ${chartId}] ⚠️ Circuit breaker is open, will retry later`);
           setTranscriptionText(''); // Clear
           retryCountRef.current = 0;
+          loadedChartIdRef.current = chartId; // Mark as attempted
         } else {
           console.error(`[Reports Chart ${chartId}] ❌ Error fetching transcription_text from DB:`, error);
           setTranscriptionText(''); // Clear on error
           retryCountRef.current = 0;
+          loadedChartIdRef.current = chartId; // Mark as attempted
         }
-        loadedChartIdRef.current = chartId;
       } finally {
         loadingRef.current = false;
         setLoading(false);
