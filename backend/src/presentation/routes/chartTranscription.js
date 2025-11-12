@@ -13,25 +13,26 @@ const router = Router();
  * Render flow: Returns transcription from DB only (no OpenAI call, no cache)
  * DB is the single source of truth for all transcriptions
  * 
- * Query params (optional):
- * - topic: Chart topic/context for signature verification
- * - chartData: JSON string of chart data for signature verification
+ * ⚠️ NEVER returns 404 - always returns 200 with {exists: false} if not found
+ * This prevents 404 spam in console and treats cache miss as normal flow
  * 
- * If topic and chartData are provided, signature is verified.
- * If signature doesn't match, returns 404 to trigger new transcription creation.
+ * Response format:
+ * - If exists: { exists: true, transcription_text: string, chartId: string }
+ * - If not exists: { exists: false, transcription_text: null, chartId: string }
  */
 router.get('/chart-transcription/:chartId', async (req, res) => {
   const chartId = req.params.chartId;
-  const { topic, chartData } = req.query;
   
   try {
-    console.log(`[GET /chart-transcription/${chartId}] Request received`);
+    console.log(`[GET /chart-transcription/${chartId}] Request received (no query params)`);
     
     // Check if DATABASE_URL is available
     if (!process.env.DATABASE_URL) {
       console.error(`[GET /chart-transcription/${chartId}] DATABASE_URL not available`);
       return res.status(503).json({ 
-        ok: false, 
+        exists: false,
+        transcription_text: null,
+        chartId,
         error: 'Database service unavailable' 
       });
     }
@@ -40,55 +41,21 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
     const row = await getTranscriptionByChartId(chartId);
     
     if (!row) {
-      console.log(`[GET /chart-transcription/${chartId}] No transcription found in DB (404)`);
-      return res.status(404).json({ 
-        ok: false, 
-        error: 'No transcription in database' 
+      console.log(`[GET /chart-transcription/${chartId}] No transcription found in DB - returning 200 {exists: false}`);
+      // ⚠️ Return 200 with exists:false instead of 404 to prevent error spam
+      return res.status(200).json({ 
+        exists: false,
+        transcription_text: null,
+        chartId
       });
-    }
-    
-    // If topic and chartData are provided, verify signature matches current data
-    if (topic !== undefined && chartData !== undefined) {
-      try {
-        const currentSignature = computeChartSignature(
-          topic, 
-          typeof chartData === 'string' ? JSON.parse(chartData) : chartData
-        );
-        const storedSignature = row.chart_signature;
-        
-        if (currentSignature !== storedSignature) {
-          console.log(`[GET /chart-transcription/${chartId}] ⚠️ Signature mismatch!`);
-          console.log(`[GET /chart-transcription/${chartId}] Current signature: ${currentSignature.substring(0, 16)}...`);
-          console.log(`[GET /chart-transcription/${chartId}] Stored signature: ${storedSignature?.substring(0, 16) || 'null'}...`);
-          console.log(`[GET /chart-transcription/${chartId}] Chart data has changed - transcription is outdated`);
-          
-          // Return 404 to indicate transcription needs to be regenerated
-          return res.status(404).json({ 
-            ok: false, 
-            error: 'Transcription outdated - data has changed',
-            signatureMismatch: true,
-            currentSignature: currentSignature.substring(0, 16) + '...',
-            storedSignature: storedSignature?.substring(0, 16) + '...' || 'null'
-          });
-        } else {
-          console.log(`[GET /chart-transcription/${chartId}] ✅ Signature matches - transcription is up to date`);
-        }
-      } catch (err) {
-        console.warn(`[GET /chart-transcription/${chartId}] Error verifying signature:`, err.message);
-        // Continue anyway - return transcription even if signature check fails
-      }
     }
     
     console.log(`[GET /chart-transcription/${chartId}] Transcription found in DB, text length: ${row.transcription_text?.length || 0}`);
     // Return transcription directly from DB - DB is the single source of truth
-    res.json({ 
-      ok: true, 
-      data: { 
-        chartId: row.chart_id, 
-        text: row.transcription_text, // Direct from DB, no modification
-        updatedAt: row.updated_at,
-        signature: row.chart_signature?.substring(0, 16) + '...' // For debugging
-      } 
+    res.status(200).json({ 
+      exists: true,
+      transcription_text: row.transcription_text, // Direct from DB, no modification
+      chartId: row.chart_id
     });
   } catch (err) {
     // Log full error details for debugging
@@ -101,10 +68,87 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
     
     // Return 500 with error message
     res.status(500).json({ 
-      ok: false, 
+      exists: false,
+      transcription_text: null,
+      chartId,
       error: err?.message || 'DB error',
-      chartId: chartId,
       details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+  }
+});
+
+/**
+ * POST /api/v1/ai/chart-transcription/:chartId
+ * Get-or-create: If transcription exists, return it. Otherwise, create via OpenAI and save to DB.
+ * body: { topic?: string, chartData?: any, imageUrl: string }
+ * 
+ * Response format:
+ * - If existed: { created: false, chartId: string, transcription_text: string }
+ * - If created: { created: true, chartId: string, transcription_text: string }
+ */
+router.post('/chart-transcription/:chartId', async (req, res) => {
+  const chartId = req.params.chartId;
+  const { topic, chartData, imageUrl } = req.body || {};
+  
+  try {
+    console.log(`[POST /chart-transcription/${chartId}] Get-or-create request received`);
+    
+    // Check if DATABASE_URL is available
+    if (!process.env.DATABASE_URL) {
+      console.error(`[POST /chart-transcription/${chartId}] DATABASE_URL not available`);
+      return res.status(503).json({ 
+        created: false,
+        chartId,
+        transcription_text: null,
+        error: 'Database service unavailable' 
+      });
+    }
+    
+    if (!imageUrl) {
+      return res.status(400).json({ 
+        created: false,
+        chartId,
+        transcription_text: null,
+        error: 'imageUrl is required' 
+      });
+    }
+    
+    // Check if transcription already exists
+    const existing = await getTranscriptionByChartId(chartId);
+    if (existing) {
+      console.log(`[POST /chart-transcription/${chartId}] Transcription exists - returning existing`);
+      return res.status(200).json({
+        created: false,
+        chartId,
+        transcription_text: existing.transcription_text
+      });
+    }
+    
+    // Create new transcription via OpenAI
+    console.log(`[POST /chart-transcription/${chartId}] Creating new transcription via OpenAI...`);
+    const signature = computeChartSignature(topic || '', chartData || {});
+    const transcription_text = await transcribeChartImage({ imageUrl, context: topic });
+    
+    // Save to DB
+    await upsertTranscription({ chartId, signature, text: transcription_text, model: 'gpt-4o' });
+    console.log(`[POST /chart-transcription/${chartId}] Transcription created and saved to DB`);
+    
+    return res.status(201).json({
+      created: true,
+      chartId,
+      transcription_text
+    });
+  } catch (err) {
+    console.error(`[POST /chart-transcription/${chartId}] Error:`, {
+      message: err.message,
+      stack: err.stack
+    });
+    
+    res.status(500).json({ 
+      created: false,
+      chartId,
+      transcription_text: null,
+      error: err?.message || 'AI/DB error'
     });
   }
 });

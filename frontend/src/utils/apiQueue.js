@@ -184,21 +184,19 @@ class APIQueue {
           } catch (error) {
             lastError = error;
             
-            // 404 is NOT a failure - it means no transcription exists (expected state)
+            // 404 should not happen anymore (GET returns 200 {exists: false})
+            // But handle it gracefully if it does occur
             if (error.response?.status === 404) {
-              // Don't record as failure - 404 is expected when transcription doesn't exist
-              // Return result that matches the API response structure
-              // API returns: { data: { data: { text: string } } }
+              console.info(`[APIQueue] 404 for "${request.key}" - treating as cache miss (should not happen with new API)`);
+              // Return result that matches the new API response structure
               result = { 
                 data: { 
-                  data: { 
-                    text: null,
-                    notFound: true 
-                  } 
+                  exists: false,
+                  transcription_text: null,
+                  chartId: request.key.replace('transcription-', '')
                 } 
               };
-              console.log(`[APIQueue] 404 for "${request.key}" - returning empty result`);
-              // Don't record as success or failure - 404 is neutral
+              // Don't record as success or failure - cache miss is neutral
               break;
             }
             

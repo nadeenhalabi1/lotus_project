@@ -52,34 +52,29 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
         }
         
         // Call API through queue to prevent rate limiting
-        // This ensures transcriptions are managed ONLY in DB
-        // Pass topic and chartData to verify signature matches current data
-        console.log(`[Reports Chart ${chartId}] Queuing transcription fetch from DB...`);
-        
-        // Get current chart data for signature verification
-        const topic = `${reportTitle || 'Report'} - ${chart.title || chartId}`;
-        const chartData = chart.data || {};
+        // GET returns: { exists: boolean, transcription_text: string | null, chartId: string }
+        console.log(`[Reports Chart ${chartId}] 🔄 Checking cache (GET)...`);
         
         // Use queue to prevent concurrent requests and rate limiting
+        // No query params - clean GET request
         const res = await apiQueue.enqueue(
           `transcription-${chartId}`, // Unique key to prevent duplicate requests
-          () => chartTranscriptionAPI.getTranscription(chartId, topic, chartData)
+          () => chartTranscriptionAPI.getTranscription(chartId)
         );
         
         // Debug: Log the response structure
         console.log(`[Reports Chart ${chartId}] Response structure:`, {
           hasRes: !!res,
           hasData: !!res?.data,
-          hasDataData: !!res?.data?.data,
-          text: res?.data?.data?.text,
-          notFound: res?.data?.data?.notFound,
+          exists: res?.data?.exists,
+          transcription_text: res?.data?.transcription_text ? `${res.data.transcription_text.length} chars` : 'null',
           fullResponse: res
         });
         
-        // Handle response - could be from queue (404 handled) or direct API call
-        // The API returns: { data: { data: { text: string } } }
-        const dbTranscriptionText = res?.data?.data?.text || null;
-        const isNotFound = res?.data?.data?.notFound === true;
+        // Handle response - new format: { exists: boolean, transcription_text: string | null, chartId: string }
+        const exists = res?.data?.exists === true;
+        const dbTranscriptionText = exists ? (res?.data?.transcription_text || null) : null;
+        const isNotFound = !exists;
         
         // Always set what's in DB (even if null) - this ensures sync with DB
         // NO local caching - DB is the single source of truth
@@ -96,18 +91,18 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
             onNarrationReady(chartId, dbTranscriptionText);
           }
         } else if (isNotFound) {
-          // No transcription in DB - clear state
-          console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text found in DB for this chart (404 handled by queue)`);
+          // Cache miss - not an error, just need to create transcription
+          console.log(`[Reports Chart ${chartId}] 📭 Cache miss - will create transcription via POST`);
           setTranscriptionText('');
           loadedChartIdRef.current = chartId;
           retryCountRef.current = 0;
-          // When system opens and transcription is missing - send to OpenAI and save to DB
-          // This is the initial flow: user opens system → all charts go to OpenAI → saved to DB
+          
+          // When system opens and transcription is missing - create via POST get-or-create
           setTimeout(async () => {
             try {
               const chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
               if (chartElement) {
-                console.log(`[Reports Chart ${chartId}] 📤 Sending chart to OpenAI for transcription (initial load)...`);
+                console.log(`[Reports Chart ${chartId}] 📤 Creating transcription via POST get-or-create...`);
                 const isDark = document.documentElement.classList.contains('dark');
                 const canvas = await html2canvas(chartElement, {
                   backgroundColor: isDark ? '#1f2937' : '#ffffff',
@@ -118,116 +113,42 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
                 
                 const imageUrl = canvas.toDataURL('image/png');
                 
-                // Send to OpenAI via startup-fill (creates transcription and saves to DB)
-                console.log(`[Reports Chart ${chartId}] 📤 Calling startupFill API...`);
-                let startupFillResult;
+                // Get current chart data
+                const topic = `${reportTitle || 'Report'} - ${chart.title || chartId}`;
+                const chartData = chart.data || {};
+                
+                // Use POST get-or-create (idempotent - returns existing if exists, creates if not)
                 try {
-                  startupFillResult = await apiQueue.enqueue(
-                    `create-transcription-${chartId}`,
-                    () => chartTranscriptionAPI.startupFill([{
-                      chartId,
-                      topic,
-                      chartData,
-                      imageUrl
-                    }])
+                  const result = await apiQueue.enqueue(
+                    `get-or-create-transcription-${chartId}`,
+                    () => chartTranscriptionAPI.getOrCreateTranscription(chartId, topic, chartData, imageUrl)
                   );
                   
-                  console.log(`[Reports Chart ${chartId}] ✅ Transcription sent to OpenAI and saved to DB`, startupFillResult?.data);
-                  
-                  // Check if startupFill was successful
-                  if (startupFillResult?.data?.ok === false) {
-                    console.error(`[Reports Chart ${chartId}] ❌ startupFill failed:`, startupFillResult?.data?.error);
-                    return; // Exit early if startupFill failed
-                  }
-                  
-                  // Check if the result shows the chart was processed
-                  const results = startupFillResult?.data?.results || [];
-                  const chartResult = results.find(r => r.chartId === chartId);
-                  if (chartResult) {
-                    console.log(`[Reports Chart ${chartId}] 📊 Chart processing result:`, chartResult);
-                    if (chartResult.status === 'error') {
-                      console.error(`[Reports Chart ${chartId}] ❌ Error creating transcription:`, chartResult.error);
-                      return; // Exit early if there was an error
-                    }
+                  const transcription_text = result?.data?.transcription_text;
+                  if (transcription_text && transcription_text.trim()) {
+                    console.log(`[Reports Chart ${chartId}] ✅ Transcription ${result?.data?.created ? 'created' : 'found'} (${transcription_text.length} chars)`);
+                    setTranscriptionText(transcription_text);
+                    setLoading(false);
+                    loadingRef.current = false;
+                  } else {
+                    console.warn(`[Reports Chart ${chartId}] ⚠️ POST returned empty transcription_text`);
+                    setLoading(false);
+                    loadingRef.current = false;
                   }
                 } catch (err) {
-                  console.error(`[Reports Chart ${chartId}] ❌ Failed to call startupFill:`, err);
-                  return; // Exit early if startupFill threw an error
-                }
-                
-                // Wait a moment for DB to be updated (OpenAI call + DB write)
-                console.log(`[Reports Chart ${chartId}] ⏳ Waiting 2 seconds for DB to update...`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                
-                // Function to reload transcription from DB
-                const reloadTranscription = async () => {
-                  try {
-                    // Load transcription and check if it was loaded
-                    const res = await apiQueue.enqueue(
-                      `transcription-${chartId}-reload-${Date.now()}`, // Unique key to avoid duplicate prevention
-                      () => chartTranscriptionAPI.getTranscription(chartId, topic, chartData)
-                    );
-                    
-                    const loadedText = res?.data?.data?.text;
-                    if (loadedText && loadedText.trim()) {
-                      console.log(`[Reports Chart ${chartId}] ✅ Transcription loaded from DB (${loadedText.length} chars) - setting transcription_text`);
-                      // IMPORTANT: Set transcription from DB field transcription_text
-                      setTranscriptionText(loadedText);
-                      setLoading(false); // Stop loading - transcription is ready
-                      loadingRef.current = false; // Update ref too
-                      // Clear interval if transcription was loaded
-                      if (reloadIntervalRef.current) {
-                        clearInterval(reloadIntervalRef.current);
-                        reloadIntervalRef.current = null;
-                      }
-                      return true; // Success
-                    }
-                    return false; // Not loaded yet
-                  } catch (err) {
-                    console.error(`[Reports Chart ${chartId}] Failed to reload transcription:`, err);
-                    return false; // Error
-                  }
-                };
-                
-                // Try to load immediately (DB might be ready already)
-                console.log(`[Reports Chart ${chartId}] 🔄 Attempting immediate load from DB...`);
-                const immediateSuccess = await reloadTranscription();
-                
-                if (!immediateSuccess) {
-                  // If immediate load failed, start polling with interval
-                  console.log(`[Reports Chart ${chartId}] ⏳ Starting polling for transcription from DB...`);
-                  let reloadAttempts = 0;
-                  const maxReloadAttempts = 10; // Try 10 times (30 seconds total with 3s intervals)
-                  
-                  // Clear any existing interval first
-                  if (reloadIntervalRef.current) {
-                    clearInterval(reloadIntervalRef.current);
-                  }
-                  
-                  reloadIntervalRef.current = setInterval(async () => {
-                    reloadAttempts++;
-                    console.log(`[Reports Chart ${chartId}] 🔄 Reloading transcription from DB (attempt ${reloadAttempts}/${maxReloadAttempts})...`);
-                    
-                    const success = await reloadTranscription();
-                    if (success) {
-                      // Transcription loaded successfully, interval already cleared in reloadTranscription
-                      return;
-                    }
-                    
-                    if (reloadAttempts >= maxReloadAttempts) {
-                      console.warn(`[Reports Chart ${chartId}] ⚠️ Transcription not loaded after ${maxReloadAttempts} attempts`);
-                      if (reloadIntervalRef.current) {
-                        clearInterval(reloadIntervalRef.current);
-                        reloadIntervalRef.current = null;
-                      }
-                    }
-                  }, 3000); // Try every 3 seconds (faster than before)
+                  console.error(`[Reports Chart ${chartId}] ❌ Failed to create transcription via POST:`, err);
+                  setLoading(false);
+                  loadingRef.current = false;
                 }
               } else {
                 console.warn(`[Reports Chart ${chartId}] Chart element not found, cannot create transcription`);
+                setLoading(false);
+                loadingRef.current = false;
               }
             } catch (err) {
               console.error(`[Reports Chart ${chartId}] Failed to create transcription:`, err);
+              setLoading(false);
+              loadingRef.current = false;
             }
           }, 2000); // Wait 2 seconds for chart to render
         } else {

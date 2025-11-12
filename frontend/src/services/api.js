@@ -141,14 +141,20 @@ export const chartTranscriptionAPI = {
   // GET: Read transcription from DB only (no OpenAI call) - Render flow
   // If topic and chartData are provided, signature is verified
   // If signature doesn't match, returns 404 to trigger new transcription creation
-  getTranscription: (chartId, topic, chartData) => {
-    const params = {};
-    if (topic !== undefined) params.topic = topic;
-    if (chartData !== undefined) {
-      // Convert chartData to JSON string if it's an object
-      params.chartData = typeof chartData === 'string' ? chartData : JSON.stringify(chartData);
-    }
-    return api.get(`/ai/chart-transcription/${chartId}`, { params });
+  // GET: Check if transcription exists in DB (no query params - clean URL)
+  // Returns: { exists: boolean, transcription_text: string | null, chartId: string }
+  getTranscription: (chartId) => {
+    return api.get(`/ai/chart-transcription/${chartId}`);
+  },
+  // POST: Get-or-create transcription (if exists return it, otherwise create via OpenAI)
+  // body: { topic?: string, chartData?: any, imageUrl: string }
+  // Returns: { created: boolean, chartId: string, transcription_text: string }
+  getOrCreateTranscription: (chartId, topic, chartData, imageUrl) => {
+    return api.post(`/ai/chart-transcription/${chartId}`, {
+      topic,
+      chartData,
+      imageUrl
+    });
   },
   // POST: Startup fill - batch process all charts (runs OpenAI only if needed)
   startupFill: (charts) => {
