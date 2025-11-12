@@ -118,25 +118,39 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
                 const chartData = chart.data || {};
                 
                 // Use POST get-or-create (idempotent - returns existing if exists, creates if not)
+                // ⚠️ CRITICAL: After POST, we MUST fetch from DB (GET) - never display POST response directly
+                // This ensures we always show what's in the DB, not the OpenAI response
                 try {
                   const result = await apiQueue.enqueue(
                     `get-or-create-transcription-${chartId}`,
                     () => chartTranscriptionAPI.getOrCreateTranscription(chartId, topic, chartData, imageUrl)
                   );
                   
-                  const transcription_text = result?.data?.transcription_text;
-                  if (transcription_text && transcription_text.trim()) {
-                    console.log(`[Reports Chart ${chartId}] ✅ Transcription ${result?.data?.created ? 'created' : 'found'} (${transcription_text.length} chars)`);
-                    setTranscriptionText(transcription_text);
+                  console.log(`[Reports Chart ${chartId}] ✅ POST ${result?.data?.created ? 'created' : 'found'} transcription - now fetching from DB...`);
+                  
+                  // Wait a moment for DB to be updated (if created)
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                  
+                  // 🔄 CRITICAL: Always fetch from DB after POST - never display POST response directly
+                  // This ensures we always show what's in the DB (single source of truth)
+                  const dbResponse = await apiQueue.enqueue(
+                    `fetch-after-create-${chartId}`,
+                    () => chartTranscriptionAPI.getTranscription(chartId)
+                  );
+                  
+                  const dbTranscriptionText = dbResponse?.data?.transcription_text;
+                  if (dbTranscriptionText && dbTranscriptionText.trim()) {
+                    console.log(`[Reports Chart ${chartId}] ✅ Fetched transcription_text from DB (${dbTranscriptionText.length} chars)`);
+                    setTranscriptionText(dbTranscriptionText); // Set from DB, not from POST response
                     setLoading(false);
                     loadingRef.current = false;
                   } else {
-                    console.warn(`[Reports Chart ${chartId}] ⚠️ POST returned empty transcription_text`);
+                    console.warn(`[Reports Chart ${chartId}] ⚠️ DB returned empty transcription_text after POST`);
                     setLoading(false);
                     loadingRef.current = false;
                   }
                 } catch (err) {
-                  console.error(`[Reports Chart ${chartId}] ❌ Failed to create transcription via POST:`, err);
+                  console.error(`[Reports Chart ${chartId}] ❌ Failed to create/fetch transcription:`, err);
                   setLoading(false);
                   loadingRef.current = false;
                 }

@@ -109,6 +109,104 @@ export const useDashboardData = () => {
         data: dashboardData,
         lastUpdated: updatedAt,
       });
+      
+      // 🧠 CRITICAL: On initial site load, send all charts to OpenAI and save to DB
+      // This ensures every chart has a transcription in the DB
+      // Wait for charts to render first
+      if (dashboardData.charts && dashboardData.charts.length > 0) {
+        setTimeout(async () => {
+          try {
+            console.log(`[Dashboard Startup] 🚀 Initial load - sending ${dashboardData.charts.length} charts to OpenAI for transcription...`);
+            
+            const chartsForStartupFill = [];
+            
+            // Collect all charts with their images
+            for (let i = 0; i < dashboardData.charts.length; i++) {
+              const chart = dashboardData.charts[i];
+              const chartId = chart.id || `chart-${i}`;
+              
+              try {
+                // First check if transcription already exists in DB
+                const existingTranscription = await apiQueue.enqueue(
+                  `check-transcription-${chartId}`,
+                  () => chartTranscriptionAPI.getTranscription(chartId)
+                );
+                
+                // If transcription exists, skip this chart
+                if (existingTranscription?.data?.exists === true) {
+                  console.log(`[Dashboard Startup] Chart ${chartId} already has transcription in DB, skipping`);
+                  continue;
+                }
+                
+                // Find the chart element
+                let chartElement = document.querySelector(`[data-chart-id="${chartId}"] .recharts-wrapper`);
+                
+                // Fallback: try to find by chart card
+                if (!chartElement) {
+                  const chartCard = document.querySelector(`[data-chart-id="${chartId}"]`);
+                  if (chartCard) {
+                    chartElement = chartCard.querySelector('.recharts-wrapper');
+                  }
+                }
+                
+                // Fallback: try to find by index
+                if (!chartElement) {
+                  const allChartCards = document.querySelectorAll('[data-chart-id]');
+                  if (allChartCards[i]) {
+                    chartElement = allChartCards[i].querySelector('.recharts-wrapper');
+                  }
+                }
+                
+                if (chartElement) {
+                  // Capture chart image
+                  const canvas = await html2canvas(chartElement, {
+                    backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
+                    scale: 1,
+                    logging: false,
+                    useCORS: true
+                  });
+                  
+                  const imageUrl = canvas.toDataURL('image/png');
+                  const topic = `${chart.title || chartId}`;
+                  const chartData = chart.data || {};
+                  
+                  chartsForStartupFill.push({
+                    chartId,
+                    topic,
+                    chartData,
+                    imageUrl
+                  });
+                  
+                  console.log(`[Dashboard Startup] Prepared chart ${chartId} for OpenAI transcription`);
+                } else {
+                  console.warn(`[Dashboard Startup] Chart element not found for ${chartId}, skipping`);
+                }
+              } catch (err) {
+                console.error(`[Dashboard Startup] Failed to prepare chart ${chartId}:`, err);
+                // Continue with other charts even if one fails
+              }
+            }
+            
+            // Send all charts to OpenAI via startup-fill (only creates if missing)
+            if (chartsForStartupFill.length > 0) {
+              console.log(`[Dashboard Startup] 📤 Sending ${chartsForStartupFill.length} charts to OpenAI via startup-fill...`);
+              
+              try {
+                await chartTranscriptionAPI.startupFill(chartsForStartupFill);
+                console.log(`[Dashboard Startup] ✅ All charts sent to OpenAI and saved to DB`);
+              } catch (err) {
+                console.error(`[Dashboard Startup] Failed to send charts to OpenAI:`, err);
+                // Don't fail the whole dashboard load if transcription creation fails
+              }
+            } else {
+              console.log(`[Dashboard Startup] All charts already have transcriptions in DB`);
+            }
+          } catch (err) {
+            console.error('[Dashboard Startup] Failed to process chart transcriptions:', err);
+            // Don't fail the whole dashboard load if transcription creation fails
+          }
+        }, 3000); // Wait 3 seconds for charts to render
+      }
     } catch (err) {
       // Handle 429 errors with retry logic
       if (err.response?.status === 429) {
@@ -219,8 +317,17 @@ export const useDashboardData = () => {
                   const topic = `${chart.title || chartId}`;
                   
                   // Refresh transcription via OpenAI (overwrites old one in DB)
-                  await chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, chart.data || {});
-                  console.log(`[Dashboard Refresh] Chart ${chartId} transcription refreshed`);
+                  // ⚠️ CRITICAL: After POST refresh, we MUST fetch from DB (GET) - never display POST response directly
+                  // This ensures we always show what's in the DB, not the OpenAI response
+                  await chartTranscriptionAPI.refreshTranscription(chartId, imageUrl, topic, chart.data || {}, true);
+                  
+                  // Wait a moment for DB to be updated
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                  
+                  // 🔄 CRITICAL: Always fetch from DB after POST refresh - never display POST response directly
+                  // This ensures we always show what's in the DB (single source of truth)
+                  // Note: The transcription will be displayed when Reports page loads it from DB
+                  console.log(`[Dashboard Refresh] Chart ${chartId} transcription refreshed and saved to DB`);
                 } else {
                   console.warn(`[Dashboard Refresh] Chart element not found for ${chartId}, skipping transcription refresh`);
                 }
