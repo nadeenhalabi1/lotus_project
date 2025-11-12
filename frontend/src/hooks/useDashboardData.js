@@ -135,7 +135,7 @@ export const useDashboardData = () => {
         // This ensures every chart has a transcription in the DB
         // Wait for charts to render first
         if (dashboardData.charts && dashboardData.charts.length > 0) {
-        console.log(`[Dashboard Startup] 📊 Dashboard loaded with ${dashboardData.charts.length} charts. Will wait 3 seconds for charts to render...`);
+          console.log(`[Dashboard Startup] 📊 Dashboard loaded with ${dashboardData.charts.length} charts. Will wait 3 seconds for charts to render...`);
         setTimeout(async () => {
           try {
             console.log(`[Dashboard Startup] 🚀 Initial load - sending ${dashboardData.charts.length} charts to OpenAI for transcription...`);
@@ -304,6 +304,7 @@ export const useDashboardData = () => {
             // Don't fail the whole dashboard load if transcription creation fails
           }
         }, 3000); // Wait 3 seconds for charts to render
+        }
       }
     } catch (err) {
       // Handle 429 errors with retry logic
