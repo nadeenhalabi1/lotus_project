@@ -128,16 +128,22 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
                 // Reload transcription from DB after creation (wait for DB to update)
                 // Try multiple times to ensure transcription is loaded
                 let reloadAttempts = 0;
-                const maxReloadAttempts = 3;
+                const maxReloadAttempts = 5; // Try 5 times (25 seconds total)
                 const reloadInterval = setInterval(async () => {
                   reloadAttempts++;
                   console.log(`[Reports Chart ${chartId}] 🔄 Reloading transcription from DB (attempt ${reloadAttempts}/${maxReloadAttempts})...`);
                   
                   try {
-                    await loadTranscriptionFromDB();
-                    // Check if transcription was loaded
-                    if (transcriptionText) {
-                      console.log(`[Reports Chart ${chartId}] ✅ Transcription loaded from DB`);
+                    // Load transcription and check if it was loaded
+                    const res = await apiQueue.enqueue(
+                      `transcription-${chartId}-reload`,
+                      () => chartTranscriptionAPI.getTranscription(chartId, topic, chartData)
+                    );
+                    
+                    const loadedText = res?.data?.data?.text;
+                    if (loadedText) {
+                      console.log(`[Reports Chart ${chartId}] ✅ Transcription loaded from DB (${loadedText.length} chars)`);
+                      setTranscriptionText(loadedText);
                       clearInterval(reloadInterval);
                     } else if (reloadAttempts >= maxReloadAttempts) {
                       console.warn(`[Reports Chart ${chartId}] ⚠️ Transcription not loaded after ${maxReloadAttempts} attempts`);
