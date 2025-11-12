@@ -255,6 +255,23 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
       textPreview: text?.substring(0, 100) + '...'
     });
     
+    // ⚠️ CRITICAL: Ensure all parameters are valid strings (not null/undefined)
+    const safeChartId = String(chartId || '').trim();
+    const safeSignature = String(signature || '').trim();
+    const safeModel = String(model || 'gpt-4o').trim();
+    const safeText = String(text || '').trim();
+    
+    if (!safeChartId) {
+      throw new Error('chartId is required and cannot be empty');
+    }
+    
+    console.log(`[upsertTranscription] 🔍 Prepared safe parameters:`, {
+      chartId: safeChartId,
+      signature: safeSignature.substring(0, 16) + '...',
+      model: safeModel,
+      textLength: safeText.length
+    });
+    
     const query = `INSERT INTO ai_chart_transcriptions 
        (chart_id, chart_signature, model, transcription_text, updated_at)
        VALUES ($1, $2, $3, $4, NOW())
@@ -266,22 +283,22 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
          updated_at = NOW()
        RETURNING chart_id, updated_at, transcription_text`;
     
-    console.log(`[upsertTranscription] 🔍 Executing query with params:`, {
-      $1: chartId,
-      $2: signature?.substring(0, 16) + '...',
-      $3: model,
-      $4: `[${text?.length || 0} chars]`
+    console.log(`[upsertTranscription] 🔍 Executing query with safe params:`, {
+      $1: safeChartId,
+      $2: safeSignature.substring(0, 16) + '...',
+      $3: safeModel,
+      $4: `[${safeText.length} chars]`
     });
     
     // ⚠️ CRITICAL: Execute query and log EVERYTHING
-    console.log(`[upsertTranscription] 🔍 About to execute query for ${chartId}...`);
+    console.log(`[upsertTranscription] 🔍 About to execute query for ${safeChartId}...`);
     console.log(`[upsertTranscription] Query: ${query.substring(0, 100)}...`);
-    console.log(`[upsertTranscription] Params: chartId=${chartId}, signature=${signature?.substring(0, 16)}..., model=${model}, textLength=${text?.length || 0}`);
     
     let result;
     try {
-      result = await pool.query(query, [chartId, signature || '', model, text || '']);
-      console.log(`[upsertTranscription] ✅ Query executed successfully for ${chartId}`);
+      // ⚠️ CRITICAL: Use safe parameters to ensure no null/undefined values
+      result = await pool.query(query, [safeChartId, safeSignature, safeModel, safeText]);
+      console.log(`[upsertTranscription] ✅ Query executed successfully for ${safeChartId}`);
     } catch (queryErr) {
       console.error(`[upsertTranscription] ❌ Query execution FAILED for ${chartId}:`, {
         message: queryErr.message,
