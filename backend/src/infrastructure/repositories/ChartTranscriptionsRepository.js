@@ -295,15 +295,19 @@ export async function upsertTranscriptionSimple({ chartId, text }) {
     const pool = getPool();
     const safeChartId = String(chartId || '').trim();
     const safeText = String(text || '').trim();
+    const safeSignature = ''; // Empty signature for new workflow (no data change tracking)
+    const safeModel = 'gpt-4o-mini'; // Default model
     
     const query = `INSERT INTO ai_chart_transcriptions 
-       (chart_id, transcription_text)
-       VALUES ($1, $2)
+       (chart_id, chart_signature, model, transcription_text, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
        ON CONFLICT (chart_id) 
-       DO UPDATE SET transcription_text = EXCLUDED.transcription_text`;
+       DO UPDATE SET 
+         transcription_text = EXCLUDED.transcription_text,
+         updated_at = NOW()`;
     
     await withRetry(async () => {
-      return await pool.query(query, [safeChartId, safeText]);
+      return await pool.query(query, [safeChartId, safeSignature, safeModel, safeText]);
     }, 3);
     
     return true;
