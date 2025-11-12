@@ -83,19 +83,23 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
         
         // Always set what's in DB (even if null) - this ensures sync with DB
         // NO local caching - DB is the single source of truth
-        setTranscriptionText(dbTranscriptionText || '');
-        loadedChartIdRef.current = chartId;
-        retryCountRef.current = 0; // Reset retry count on success
-        
-        // Log what we got from DB for debugging
-        if (dbTranscriptionText) {
-          console.log(`[Reports Chart ${chartId}] ✅ Got transcription from DB (${dbTranscriptionText.length} chars):`, dbTranscriptionText.substring(0, 50) + '...');
+        // IMPORTANT: Set transcription text from DB field transcription_text
+        if (dbTranscriptionText && dbTranscriptionText.trim()) {
+          console.log(`[Reports Chart ${chartId}] ✅ Got transcription_text from DB (${dbTranscriptionText.length} chars):`, dbTranscriptionText.substring(0, 50) + '...');
+          console.log(`[Reports Chart ${chartId}] 📝 Setting transcriptionText state with DB value`);
+          setTranscriptionText(dbTranscriptionText); // Set transcription from DB field transcription_text
+          loadedChartIdRef.current = chartId;
+          retryCountRef.current = 0; // Reset retry count on success
           // Notify parent component
           if (onNarrationReady) {
             onNarrationReady(chartId, dbTranscriptionText);
           }
         } else if (isNotFound) {
+          // No transcription in DB - clear state
           console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text found in DB for this chart (404 handled by queue)`);
+          setTranscriptionText('');
+          loadedChartIdRef.current = chartId;
+          retryCountRef.current = 0;
           // When system opens and transcription is missing - send to OpenAI and save to DB
           // This is the initial flow: user opens system → all charts go to OpenAI → saved to DB
           setTimeout(async () => {
@@ -137,7 +141,8 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
                     
                     const loadedText = res?.data?.data?.text;
                     if (loadedText) {
-                      console.log(`[Reports Chart ${chartId}] ✅ Transcription loaded from DB (${loadedText.length} chars)`);
+                      console.log(`[Reports Chart ${chartId}] ✅ Transcription loaded from DB (${loadedText.length} chars) - setting transcription_text`);
+                      // IMPORTANT: Set transcription from DB field transcription_text
                       setTranscriptionText(loadedText);
                       // Clear interval if transcription was loaded
                       if (reloadIntervalRef.current) {
@@ -373,19 +378,27 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
         <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
           Chart Summary (AI-Generated)
         </h4>
-        {loading && !transcriptionText ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400 italic">
-            Analyzing chart...
-          </p>
-        ) : transcriptionText ? (
-          <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
-            {transcriptionText}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-500 dark:text-gray-400 italic">
-            Narration will appear here...
-          </p>
-        )}
+        {(() => {
+          // Debug: Log current state
+          const chartId = chart.id || `chart-${index}`;
+          if (transcriptionText && transcriptionText.trim()) {
+            console.log(`[Reports Chart ${chartId}] 🎨 Rendering transcription_text (${transcriptionText.length} chars)`);
+          }
+          
+          return loading && !transcriptionText ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+              Analyzing chart...
+            </p>
+          ) : transcriptionText && transcriptionText.trim() ? (
+            <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+              {transcriptionText}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+              Narration will appear here...
+            </p>
+          );
+        })()}
       </div>
     </div>
   );
