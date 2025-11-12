@@ -242,17 +242,23 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
     console.log(`[startup-fill] Processing ${charts.length} charts... (force=${force})`);
     const results = [];
     
-    // ⚠️ CRITICAL: Process charts ONE AT A TIME to avoid rate limits
+    // ⚠️ CRITICAL: Process charts ONE AT A TIME (sequentially) to avoid rate limits
     // OpenAI has a limit of 30K tokens per minute, and multiple large images can exceed this
+    // Each chart is processed: OpenAI call → Save to DB → Wait → Next chart
+    console.log(`[startup-fill] ⚠️ Processing ${charts.length} charts SEQUENTIALLY (one at a time) to prevent OpenAI rate limits`);
+    
     for (let i = 0; i < charts.length; i++) {
       const c = charts[i];
       
       // Add delay between charts to avoid rate limits (except for first chart)
+      // Note: openaiQueue also adds delay, so total delay is ~2 seconds between charts
       if (i > 0) {
-        const delayMs = 2000; // 2 seconds between charts
-        console.log(`[startup-fill] Waiting ${delayMs}ms before processing chart ${i + 1}/${charts.length} to avoid rate limits...`);
+        const delayMs = 1000; // 1 second between charts (openaiQueue adds another 1s, total ~2s)
+        console.log(`[startup-fill] ⏳ Waiting ${delayMs}ms before processing chart ${i + 1}/${charts.length} to avoid rate limits...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
+      
+      console.log(`[startup-fill] 📊 Processing chart ${i + 1}/${charts.length}: ${c?.chartId || 'unknown'}`);
       const { chartId, topic, chartData, imageUrl, model = 'gpt-4o-mini' } = c || {};
       
       if (!chartId || !imageUrl) {
@@ -337,7 +343,8 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
         
         // Generate new transcription via OpenAI and save to DB
         // ⚠️ CRITICAL: Use queue to process OpenAI requests sequentially and prevent TPM limit
-        console.log(`[startup-fill] Generating transcription for ${chartId} via OpenAI (queued)...`);
+        // The queue ensures only ONE request at a time with delays between requests
+        console.log(`[startup-fill] 📞 Calling OpenAI for ${chartId} (queued, sequential processing)...`);
         console.log(`[startup-fill] Chart ${chartId} Image URL length: ${imageUrl?.length || 0}, Topic: ${topic || 'none'}`);
         
         const text = await openaiQueue.enqueue(async () => {

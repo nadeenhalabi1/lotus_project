@@ -294,9 +294,12 @@ export const useDashboardData = () => {
                     const { data } = await chartTranscriptionAPI.getTranscription(chart.chartId);
                     console.log(`[Dashboard Startup] ✅ Chart ${chart.chartId} saved and fetched from DB (${data.transcription_text?.length || 0} chars)`);
                     
-                    // Add delay between charts to prevent rate limits
+                    // ⚠️ CRITICAL: Add delay between charts to prevent rate limits
+                    // The backend also adds delays, so total delay is ~2-3 seconds between charts
                     if (i < chartsForStartupFill.length - 1) {
-                      await new Promise(resolve => setTimeout(resolve, 2000));
+                      const delayMs = 1500; // 1.5 seconds between charts (backend adds another 1-2s)
+                      console.log(`[Dashboard Startup] ⏳ Waiting ${delayMs}ms before processing next chart (${i + 2}/${chartsForStartupFill.length})...`);
+                      await new Promise(resolve => setTimeout(resolve, delayMs));
                     }
                   } catch (err) {
                     console.error(`[Dashboard Startup] ❌ Failed for chart ${chart.chartId}:`, err);

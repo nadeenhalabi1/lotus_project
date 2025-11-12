@@ -9,8 +9,9 @@ class OpenAIQueue {
     this.queue = [];
     this.processing = false;
     this.concurrency = 1; // Process ONE request at a time
-    this.delayBetweenRequests = 2000; // 2 seconds between requests to spread token usage
+    this.delayBetweenRequests = 1000; // 1 second between requests to spread token usage (reduced from 2s)
     this.activeRequests = 0;
+    this.lastRequestTime = 0; // Track last request time to ensure minimum delay
   }
 
   /**
@@ -46,10 +47,19 @@ class OpenAIQueue {
       this.activeRequests++;
 
       try {
-        // Add delay before processing (except first request)
-        if (this.queue.length > 0 || this.activeRequests > 1) {
-          await new Promise(resolve => setTimeout(resolve, this.delayBetweenRequests));
+        // ⚠️ CRITICAL: Ensure minimum delay between requests to prevent rate limiting
+        // Calculate time since last request
+        const now = Date.now();
+        const timeSinceLastRequest = now - this.lastRequestTime;
+        const delayNeeded = Math.max(0, this.delayBetweenRequests - timeSinceLastRequest);
+        
+        if (delayNeeded > 0) {
+          console.log(`[OpenAI Queue] Waiting ${delayNeeded}ms before processing next request (to prevent rate limits)`);
+          await new Promise(resolve => setTimeout(resolve, delayNeeded));
         }
+        
+        // Update last request time
+        this.lastRequestTime = Date.now();
 
         const result = await item.requestFn();
         item.resolve(result);
@@ -57,6 +67,8 @@ class OpenAIQueue {
         item.reject(error);
       } finally {
         this.activeRequests--;
+        // Update last request time even on error to maintain rate limit spacing
+        this.lastRequestTime = Date.now();
       }
     }
 

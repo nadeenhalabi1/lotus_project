@@ -80,7 +80,7 @@ export async function transcribeChartImage({ imageUrl, context }) {
             ]
           }
         ],
-        max_tokens: 300 // Reduced from 400 to save tokens
+        max_tokens: 250 // Reduced to 250 to minimize output tokens and prevent rate limits
       });
     }, 3);
 
