@@ -165,6 +165,10 @@ begin
   end if;
 end $$;
 
+-- Unique index on chart_id (explicit index for performance)
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ai_chart_transcriptions_chart_id
+ON public.ai_chart_transcriptions(chart_id);
+
 -- Index on signature for lookups
 create index if not exists idx_ai_chart_transcriptions_signature
   on public.ai_chart_transcriptions (chart_signature);

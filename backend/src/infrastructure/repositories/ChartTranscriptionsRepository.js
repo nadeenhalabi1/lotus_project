@@ -84,6 +84,13 @@ export async function saveTranscription(chartId, signature, model, text) {
 /* ----------------- COMPAT NAMES (newer APIs) ----------------- */
 
 /**
+ * Find by chart_id (alias for compatibility)
+ */
+export async function findByChartId(chartId) {
+  return await getTranscriptionByChartId(chartId);
+}
+
+/**
  * Get by chart_id only (no signature)
  */
 export async function getTranscriptionByChartId(chartId) {
@@ -100,7 +107,7 @@ export async function getTranscriptionByChartId(chartId) {
     // Use retry with backoff for transient errors
     const result = await withRetry(async () => {
       return await pool.query(
-        `SELECT chart_id, chart_signature, model, transcription_text, updated_at 
+        `SELECT chart_id, chart_signature, model, transcription_text, created_at, updated_at 
          FROM ai_chart_transcriptions 
          WHERE chart_id = $1 
          LIMIT 1`,
@@ -122,6 +129,7 @@ export async function getTranscriptionByChartId(chartId) {
       chart_signature: row.chart_signature,
       model: row.model,
       transcription_text: row.transcription_text,
+      created_at: row.created_at,
       updated_at: row.updated_at
     };
   } catch (err) {
@@ -151,11 +159,32 @@ export async function getTranscriptionByChartId(chartId) {
 }
 
 /**
+ * Upsert and return the saved row (new API contract)
+ * Always returns the row after saving to DB
+ */
+export async function upsertAndReturn({ chartId, signature, model = 'gpt-4o-mini', text }) {
+  const saved = await upsertTranscription({ chartId, signature, model, text });
+  // Read back from DB to get full row with timestamps
+  const row = await getTranscriptionByChartId(chartId);
+  if (!row) {
+    throw new Error('Failed to retrieve saved transcription from DB');
+  }
+  return {
+    chart_id: row.chart_id,
+    chart_signature: row.chart_signature,
+    model: row.model,
+    transcription_text: row.transcription_text,
+    created_at: row.created_at || new Date().toISOString(),
+    updated_at: row.updated_at || new Date().toISOString()
+  };
+}
+
+/**
  * Upsert explicit (newer API - accepts object)
  * Saves transcription to DB - DB is the single source of truth
  * No caching, no local storage - everything is managed in DB
  */
-export async function upsertTranscription({ chartId, signature, model = 'gpt-4o', text }) {
+export async function upsertTranscription({ chartId, signature, model = 'gpt-4o-mini', text }) {
   if (!DATABASE_URL) {
     console.error(`[upsertTranscription] ❌ DATABASE_URL not available for chartId: ${chartId}`);
     throw new Error('DATABASE_URL not available');
@@ -242,15 +271,15 @@ export async function upsertTranscription({ chartId, signature, model = 'gpt-4o'
     });
     
     const query = `INSERT INTO ai_chart_transcriptions 
-       (chart_id, chart_signature, model, transcription_text, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
+       (chart_id, chart_signature, model, transcription_text, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
        ON CONFLICT (chart_id) 
        DO UPDATE SET 
          chart_signature = EXCLUDED.chart_signature,
          model = EXCLUDED.model,
          transcription_text = EXCLUDED.transcription_text,
          updated_at = NOW()
-       RETURNING chart_id, updated_at, transcription_text`;
+       RETURNING chart_id, chart_signature, model, transcription_text, created_at, updated_at`;
     
     console.log(`[upsertTranscription] 🔍 Executing query with safe params:`, {
       $1: safeChartId,

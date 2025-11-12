@@ -136,36 +136,42 @@ export const openaiAPI = {
   },
 };
 
-// Chart Transcription API (DB-first flow)
+// Chart Transcription API (DB-first flow - API Contract)
 export const chartTranscriptionAPI = {
-  // GET: Read transcription from DB only (no OpenAI call) - Render flow
-  // If topic and chartData are provided, signature is verified
-  // If signature doesn't match, returns 404 to trigger new transcription creation
-  // GET: Check if transcription exists in DB (no query params - clean URL)
-  // Returns: { exists: boolean, transcription_text: string | null, chartId: string }
+  /**
+   * GET: Read transcription from DB only
+   * Returns: { chartId: string, exists: boolean, transcription_text: string | null }
+   * Always returns 200 (never 404)
+   */
   getTranscription: (chartId) => {
     return api.get(`/ai/chart-transcription/${chartId}`);
   },
-  // POST: Get-or-create transcription (if exists return it, otherwise create via OpenAI)
-  // Checks signature - if changed, calls OpenAI and updates DB
-  // body: { topic?: string, chartData?: any, imageUrl: string, model?: string }
-  // Returns: { created: boolean, updated: boolean, chartId: string, chart_signature: string, model: string, transcription_text: string }
-  getOrCreateTranscription: (chartId, topic, chartData, imageUrl, model = 'gpt-4o-mini') => {
+  
+  /**
+   * POST: Create or update transcription
+   * Always performs: OpenAI → DB (UPSERT) → Returns saved row
+   * Body: { topic?: string, chartData?: any, imageUrl: string, model?: string, forceRecompute?: boolean }
+   * Returns: { chartId, chart_signature, model, transcription_text, updated_at }
+   */
+  createOrUpdateTranscription: (chartId, topic, chartData, imageUrl, model = 'gpt-4o-mini', forceRecompute = false) => {
     return api.post(`/ai/chart-transcription/${chartId}`, {
       topic,
       chartData,
       imageUrl,
-      model
+      model,
+      forceRecompute
     });
   },
-  // POST: Startup fill - batch process all charts
-  // If force=true, always calls OpenAI (even if transcription exists)
-  // If force=false, only calls OpenAI if transcription missing or signature changed
+  
+  // Legacy methods (for backward compatibility)
+  getOrCreateTranscription: (chartId, topic, chartData, imageUrl, model = 'gpt-4o-mini') => {
+    return chartTranscriptionAPI.createOrUpdateTranscription(chartId, topic, chartData, imageUrl, model, false);
+  },
+  
   startupFill: (charts, force = false) => {
     return api.post('/ai/chart-transcription/startup-fill', { charts, force });
   },
-  // POST: Refresh transcription (always runs OpenAI and overwrites DB) - Refresh/Morning flow
-  // If force=true, always calls OpenAI. If force=false, checks signature first.
+  
   refreshTranscription: (chartId, imageUrl, topic, chartData, force = false, model = 'gpt-4o-mini') => {
     const payload = {
       chartId,

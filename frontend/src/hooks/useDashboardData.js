@@ -273,16 +273,38 @@ export const useDashboardData = () => {
               console.log(`[Dashboard Startup] Chart IDs being sent:`, chartsForStartupFill.map(c => c.chartId));
               
               try {
-                // ⚠️ CRITICAL: force=true ensures OpenAI is called even if transcription exists
-                // This matches the requirement: "after opening the site for the first time, call OpenAI"
-                console.log(`[Dashboard Startup] 🔄 Calling chartTranscriptionAPI.startupFill with force=true...`);
-                const response = await chartTranscriptionAPI.startupFill(chartsForStartupFill, true);
-                console.log(`[Dashboard Startup] ✅ Response received from startup-fill:`, {
-                  ok: response?.data?.ok,
-                  resultsCount: response?.data?.results?.length,
-                  results: response?.data?.results
-                });
-                console.log(`[Dashboard Startup] ✅ All charts sent to OpenAI and saved to DB`);
+                // ⚠️ CRITICAL: Process each chart individually to ensure DB writes
+                // Use new API contract: POST → DB → GET from DB
+                console.log(`[Dashboard Startup] 🔄 Processing ${chartsForStartupFill.length} charts individually...`);
+                
+                for (let i = 0; i < chartsForStartupFill.length; i++) {
+                  const chart = chartsForStartupFill[i];
+                  try {
+                    // POST: OpenAI → DB (UPSERT) → Returns saved row
+                    await chartTranscriptionAPI.createOrUpdateTranscription(
+                      chart.chartId,
+                      chart.topic,
+                      chart.chartData,
+                      chart.imageUrl,
+                      chart.model || 'gpt-4o-mini',
+                      true // forceRecompute=true: always generate new transcription on first load
+                    );
+                    
+                    // GET: Fetch from DB (DB is the single source of truth)
+                    const { data } = await chartTranscriptionAPI.getTranscription(chart.chartId);
+                    console.log(`[Dashboard Startup] ✅ Chart ${chart.chartId} saved and fetched from DB (${data.transcription_text?.length || 0} chars)`);
+                    
+                    // Add delay between charts to prevent rate limits
+                    if (i < chartsForStartupFill.length - 1) {
+                      await new Promise(resolve => setTimeout(resolve, 2000));
+                    }
+                  } catch (err) {
+                    console.error(`[Dashboard Startup] ❌ Failed for chart ${chart.chartId}:`, err);
+                    // Continue with other charts
+                  }
+                }
+                
+                console.log(`[Dashboard Startup] ✅ All charts processed and saved to DB`);
               } catch (err) {
                 console.error(`[Dashboard Startup] ❌ CRITICAL: Failed to send charts to OpenAI:`, {
                   message: err.message,

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getTranscriptionByChartId, upsertTranscription } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
+import { findByChartId, upsertAndReturn } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
 import { computeChartSignature } from '../../utils/chartSignature.js';
 import { transcribeChartImage } from '../../application/services/transcribeChartService.js';
 import { openaiQueue } from '../../utils/openaiQueue.js';
@@ -39,24 +39,24 @@ router.get('/chart-transcription/:chartId', async (req, res) => {
     }
     
     console.log(`[GET /chart-transcription/${chartId}] Querying database (DB-only, no cache)...`);
-    const row = await getTranscriptionByChartId(chartId);
+    const row = await findByChartId(chartId);
     
+    // ⚠️ API Contract: Always return 200 with { chartId, exists, transcription_text }
     if (!row) {
       console.log(`[GET /chart-transcription/${chartId}] No transcription found in DB - returning 200 {exists: false}`);
-      // ⚠️ Return 200 with exists:false instead of 404 to prevent error spam
       return res.status(200).json({ 
+        chartId,
         exists: false,
-        transcription_text: null,
-        chartId
+        transcription_text: null
       });
     }
     
     console.log(`[GET /chart-transcription/${chartId}] Transcription found in DB, text length: ${row.transcription_text?.length || 0}`);
     // Return transcription directly from DB - DB is the single source of truth
     res.status(200).json({ 
+      chartId: row.chart_id,
       exists: true,
-      transcription_text: row.transcription_text, // Direct from DB, no modification
-      chartId: row.chart_id
+      transcription_text: row.transcription_text
     });
   } catch (err) {
     // Log full error details for debugging
