@@ -153,17 +153,34 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
     }
     
     // ⚠️ CRITICAL: Compress chartData before sending to OpenAI to reduce token usage
+    // Limit to first 150 data points (as per requirements) or summarize if array is too large
     let compressedChartData = chartData;
-    if (Array.isArray(chartData) && chartData.length > 50) {
-      compressedChartData = chartData.slice(0, 50);
-      console.log(`[POST /chart-transcription/${chartId}] Compressed chartData from ${chartData.length} to 50 items`);
-    } else if (chartData && typeof chartData === 'object' && Object.keys(chartData).length > 20) {
-      const keys = Object.keys(chartData).slice(0, 20);
+    if (Array.isArray(chartData) && chartData.length > 150) {
+      compressedChartData = chartData.slice(0, 150);
+      console.log(`[POST /chart-transcription/${chartId}] ⚠️ Compressed chartData from ${chartData.length} to 150 items`);
+    } else if (chartData && typeof chartData === 'object' && Object.keys(chartData).length > 30) {
+      const keys = Object.keys(chartData).slice(0, 30);
       compressedChartData = keys.reduce((acc, key) => {
         acc[key] = chartData[key];
         return acc;
       }, {});
-      console.log(`[POST /chart-transcription/${chartId}] Compressed chartData from ${Object.keys(chartData).length} to 20 keys`);
+      console.log(`[POST /chart-transcription/${chartId}] ⚠️ Compressed chartData from ${Object.keys(chartData).length} to 30 keys`);
+    }
+    
+    // ⚠️ SAFETY CHECK: If serialized data exceeds 12K characters (~3K tokens), slice more aggressively
+    const serialized = JSON.stringify(compressedChartData);
+    if (serialized.length > 12000) {
+      console.warn(`[POST /chart-transcription/${chartId}] ⚠️ WARNING: Serialized data still too large (${serialized.length} chars), slicing more aggressively...`);
+      if (Array.isArray(compressedChartData)) {
+        compressedChartData = compressedChartData.slice(0, 75);
+      } else if (typeof compressedChartData === 'object') {
+        const keys = Object.keys(compressedChartData).slice(0, 15);
+        compressedChartData = keys.reduce((acc, key) => {
+          acc[key] = compressedChartData[key];
+          return acc;
+        }, {});
+      }
+      console.log(`[POST /chart-transcription/${chartId}] ⚠️ Aggressively compressed to ${JSON.stringify(compressedChartData).length} chars`);
     }
     
     // Call OpenAI to generate transcription
@@ -253,7 +270,7 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
       // Add delay between charts to avoid rate limits (except for first chart)
       // Note: openaiQueue also adds delay, so total delay is ~2 seconds between charts
       if (i > 0) {
-        const delayMs = 1000; // 1 second between charts (openaiQueue adds another 1s, total ~2s)
+        const delayMs = 800; // 0.8 seconds between charts (openaiQueue adds another 0.8s, total ~1.6s)
         console.log(`[startup-fill] ⏳ Waiting ${delayMs}ms before processing chart ${i + 1}/${charts.length} to avoid rate limits...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
       }
@@ -326,19 +343,36 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
         }
 
         // ⚠️ CRITICAL: Compress chartData before sending to OpenAI to reduce token usage
-        // Limit to first 50 data points or summarize if array is too large
+        // Limit to first 150 data points (as per requirements) or summarize if array is too large
+        // Approximation: 1 token ≈ 4 characters, so 150 items ≈ ~6000 chars ≈ ~1500 tokens (safe)
         let compressedChartData = chartData;
-        if (Array.isArray(chartData) && chartData.length > 50) {
-          compressedChartData = chartData.slice(0, 50);
-          console.log(`[startup-fill] Chart ${chartId} Compressed chartData from ${chartData.length} to 50 items to reduce tokens`);
-        } else if (chartData && typeof chartData === 'object' && Object.keys(chartData).length > 20) {
-          // If object, take only first 20 keys
-          const keys = Object.keys(chartData).slice(0, 20);
+        if (Array.isArray(chartData) && chartData.length > 150) {
+          compressedChartData = chartData.slice(0, 150);
+          console.log(`[startup-fill] Chart ${chartId} ⚠️ Compressed chartData from ${chartData.length} to 150 items to reduce tokens`);
+        } else if (chartData && typeof chartData === 'object' && Object.keys(chartData).length > 30) {
+          // If object, take only first 30 keys (increased from 20 for better context)
+          const keys = Object.keys(chartData).slice(0, 30);
           compressedChartData = keys.reduce((acc, key) => {
             acc[key] = chartData[key];
             return acc;
           }, {});
-          console.log(`[startup-fill] Chart ${chartId} Compressed chartData from ${Object.keys(chartData).length} to 20 keys to reduce tokens`);
+          console.log(`[startup-fill] Chart ${chartId} ⚠️ Compressed chartData from ${Object.keys(chartData).length} to 30 keys to reduce tokens`);
+        }
+        
+        // ⚠️ SAFETY CHECK: If serialized data exceeds 12K characters (~3K tokens), slice more aggressively
+        const serialized = JSON.stringify(compressedChartData);
+        if (serialized.length > 12000) {
+          console.warn(`[startup-fill] Chart ${chartId} ⚠️ WARNING: Serialized data still too large (${serialized.length} chars), slicing more aggressively...`);
+          if (Array.isArray(compressedChartData)) {
+            compressedChartData = compressedChartData.slice(0, 75); // Half of 150
+          } else if (typeof compressedChartData === 'object') {
+            const keys = Object.keys(compressedChartData).slice(0, 15);
+            compressedChartData = keys.reduce((acc, key) => {
+              acc[key] = compressedChartData[key];
+              return acc;
+            }, {});
+          }
+          console.log(`[startup-fill] Chart ${chartId} ⚠️ Aggressively compressed to ${JSON.stringify(compressedChartData).length} chars`);
         }
         
         // Generate new transcription via OpenAI and save to DB
@@ -485,17 +519,34 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       console.log(`[refresh] Chart ${chartId} computed signature: ${signature.substring(0, 16)}...`);
       
       // ⚠️ CRITICAL: Compress chartData before sending to OpenAI to reduce token usage
+      // Limit to first 150 data points (as per requirements)
       let compressedChartData = chartData;
-      if (Array.isArray(chartData) && chartData.length > 50) {
-        compressedChartData = chartData.slice(0, 50);
-        console.log(`[refresh] Chart ${chartId} Compressed chartData from ${chartData.length} to 50 items`);
-      } else if (chartData && typeof chartData === 'object' && Object.keys(chartData).length > 20) {
-        const keys = Object.keys(chartData).slice(0, 20);
+      if (Array.isArray(chartData) && chartData.length > 150) {
+        compressedChartData = chartData.slice(0, 150);
+        console.log(`[refresh] Chart ${chartId} ⚠️ Compressed chartData from ${chartData.length} to 150 items`);
+      } else if (chartData && typeof chartData === 'object' && Object.keys(chartData).length > 30) {
+        const keys = Object.keys(chartData).slice(0, 30);
         compressedChartData = keys.reduce((acc, key) => {
           acc[key] = chartData[key];
           return acc;
         }, {});
-        console.log(`[refresh] Chart ${chartId} Compressed chartData from ${Object.keys(chartData).length} to 20 keys`);
+        console.log(`[refresh] Chart ${chartId} ⚠️ Compressed chartData from ${Object.keys(chartData).length} to 30 keys`);
+      }
+      
+      // ⚠️ SAFETY CHECK: If serialized data exceeds 12K characters (~3K tokens), slice more aggressively
+      const serialized = JSON.stringify(compressedChartData);
+      if (serialized.length > 12000) {
+        console.warn(`[refresh] Chart ${chartId} ⚠️ WARNING: Serialized data still too large (${serialized.length} chars), slicing more aggressively...`);
+        if (Array.isArray(compressedChartData)) {
+          compressedChartData = compressedChartData.slice(0, 75);
+        } else if (typeof compressedChartData === 'object') {
+          const keys = Object.keys(compressedChartData).slice(0, 15);
+          compressedChartData = keys.reduce((acc, key) => {
+            acc[key] = compressedChartData[key];
+            return acc;
+          }, {});
+        }
+        console.log(`[refresh] Chart ${chartId} ⚠️ Aggressively compressed to ${JSON.stringify(compressedChartData).length} chars`);
       }
       
       // ⚠️ CRITICAL: Use queue to process OpenAI requests sequentially and prevent TPM limit

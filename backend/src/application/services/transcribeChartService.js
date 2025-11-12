@@ -9,7 +9,8 @@ const openai = process.env.OPENAI_KEY
   : null;
 
 // ⚠️ CRITICAL: Keep prompt minimal to reduce token usage
-const SYSTEM_PROMPT = `Analyze chart image. Return brief description (title + 3-4 bullet points).`.trim();
+// Request concise summary (3-4 sentences max) to minimize output tokens
+const SYSTEM_PROMPT = `Summarize this chart in 3-4 concise sentences. Focus on key trends and patterns.`.trim();
 
 /**
  * Transcribe chart image using OpenAI Vision API

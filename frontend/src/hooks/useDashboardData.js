@@ -297,7 +297,7 @@ export const useDashboardData = () => {
                     // ⚠️ CRITICAL: Add delay between charts to prevent rate limits
                     // The backend also adds delays, so total delay is ~2-3 seconds between charts
                     if (i < chartsForStartupFill.length - 1) {
-                      const delayMs = 1500; // 1.5 seconds between charts (backend adds another 1-2s)
+                      const delayMs = 800; // 0.8 seconds between charts (backend adds another 0.8s, total ~1.6s)
                       console.log(`[Dashboard Startup] ⏳ Waiting ${delayMs}ms before processing next chart (${i + 2}/${chartsForStartupFill.length})...`);
                       await new Promise(resolve => setTimeout(resolve, delayMs));
                     }

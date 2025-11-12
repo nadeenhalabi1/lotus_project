@@ -9,7 +9,7 @@ class OpenAIQueue {
     this.queue = [];
     this.processing = false;
     this.concurrency = 1; // Process ONE request at a time
-    this.delayBetweenRequests = 1000; // 1 second between requests to spread token usage (reduced from 2s)
+    this.delayBetweenRequests = 800; // 0.8 seconds between requests to spread token usage (as per requirements)
     this.activeRequests = 0;
     this.lastRequestTime = 0; // Track last request time to ensure minimum delay
   }
