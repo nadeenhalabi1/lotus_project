@@ -252,23 +252,15 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
       loadingRef.current = false; // Reset loading flag
     }
     
-    // Only load if we haven't loaded this chart yet OR if we loaded but got empty result
-    if (loadedChartIdRef.current === chartId && transcriptionText) {
-      // Already loaded this chart with text, skip
-      return () => {};
-    }
-    
+    // Always load transcription from DB when chart is displayed
+    // Don't skip if already loaded - we want to ensure transcription is always shown
     // Wait a bit for chart to render, then load from DB
-    // Reduced delay to load faster
     const timer = setTimeout(() => {
-      // Double-check we still need to load (chart might have changed)
-      if (loadedChartIdRef.current !== chartId || !transcriptionText) {
-        // Only load if not already loading
-        if (!loadingRef.current) {
-          loadTranscriptionFromDB();
-        }
+      // Only load if not already loading
+      if (!loadingRef.current) {
+        loadTranscriptionFromDB();
       }
-    }, 1000); // Reduced delay to load faster
+    }, 1000); // Wait 1 second for chart to render
 
     // Listen for refresh event from dashboard
     const handleRefreshEvent = () => {
@@ -340,14 +332,14 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
         <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
           Chart Summary (AI-Generated)
         </h4>
-        {loading ? (
+        {loading && !transcriptionText ? (
           <p className="text-sm text-gray-500 dark:text-gray-400 italic">
             Analyzing chart...
           </p>
         ) : transcriptionText ? (
-          <pre className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans">
+          <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
             {transcriptionText}
-          </pre>
+          </div>
         ) : (
           <p className="text-sm text-gray-500 dark:text-gray-400 italic">
             Narration will appear here...
