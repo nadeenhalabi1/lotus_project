@@ -244,7 +244,7 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
  */
 router.post('/chart-transcription/startup-fill', async (req, res) => {
   try {
-    const { charts } = req.body || {};
+    const { charts, force = false } = req.body || {};
     
     if (!Array.isArray(charts)) {
       return res.status(400).json({ 
@@ -253,7 +253,7 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
       });
     }
 
-    console.log(`[startup-fill] Processing ${charts.length} charts...`);
+    console.log(`[startup-fill] Processing ${charts.length} charts... (force=${force})`);
     const results = [];
     
     for (const c of charts) {
@@ -276,11 +276,32 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
           // Continue anyway - will create new transcription
         }
 
-        // If exists and signature matches, skip OpenAI call
-        if (existing && existing.chart_signature === signature) {
-          console.log(`[startup-fill] Chart ${chartId} already exists with matching signature`);
-          results.push({ chartId, status: 'from-db', signature });
+        // 🔍 DEBUG: Log existing transcription status
+        console.log(`[startup-fill] Chart ${chartId} existing transcription check:`, {
+          exists: !!existing,
+          existingSignature: existing?.chart_signature?.substring(0, 16) + '...',
+          newSignature: signature?.substring(0, 16) + '...',
+          signaturesMatch: existing?.chart_signature === signature,
+          force: force
+        });
+        
+        // ⚠️ CHANGED: If force=true, always call OpenAI (even if signature matches)
+        // This ensures fresh transcriptions on first load and refresh
+        // If force=false and signature matches, skip OpenAI call (data hasn't changed)
+        if (!force && existing && existing.chart_signature === signature) {
+          console.log(`[startup-fill] Chart ${chartId} already exists with matching signature - data unchanged, skipping OpenAI call (force=false)`);
+          console.log(`[startup-fill] Chart ${chartId} Using existing transcription from DB (${existing.transcription_text?.length || 0} chars)`);
+          results.push({ chartId, status: 'from-db', signature, transcription_text: existing.transcription_text });
           continue;
+        }
+        
+        // 🔍 DEBUG: Will create/update transcription
+        if (force) {
+          console.log(`[startup-fill] Chart ${chartId} force=true - will generate new transcription via OpenAI (overwriting existing)`);
+        } else if (existing) {
+          console.log(`[startup-fill] Chart ${chartId} signature changed - will generate new transcription via OpenAI`);
+        } else {
+          console.log(`[startup-fill] Chart ${chartId} no existing transcription - will create new one via OpenAI`);
         }
 
         // Generate new transcription via OpenAI and save to DB
@@ -384,9 +405,10 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       console.log(`[refresh] Chart ${chartId} force=true - generating new transcription regardless of signature`);
       // Generate new transcription via OpenAI
       const signature = computeChartSignature(topic || '', chartData || {});
-      console.log(`[refresh] Chart ${chartId} computed signature: ${signature.substring(0, 8)}...`);
+      console.log(`[refresh] Chart ${chartId} computed signature: ${signature.substring(0, 16)}...`);
       
       console.log(`[refresh] Chart ${chartId} 📞 Calling OpenAI to generate transcription...`);
+      console.log(`[refresh] Chart ${chartId} Image URL length: ${imageUrl?.length || 0}, Topic: ${topic || 'none'}`);
       console.log(`[refresh] Chart ${chartId} Image URL length: ${imageUrl?.length || 0}, Topic: ${topic || 'none'}`);
       const text = await transcribeChartImage({ imageUrl, context: topic });
       console.log(`[refresh] Chart ${chartId} ✅ OpenAI returned transcription (${text?.length || 0} chars)`);

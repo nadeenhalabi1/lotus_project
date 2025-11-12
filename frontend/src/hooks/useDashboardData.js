@@ -126,17 +126,25 @@ export const useDashboardData = () => {
               const chartId = chart.id || `chart-${i}`;
               
               try {
-                // First check if transcription already exists in DB
+                // 🔍 DEBUG: Check if transcription already exists in DB
+                // NOTE: On first load, we should ALWAYS create transcriptions, even if they exist
+                // This ensures fresh transcriptions with latest data
                 const existingTranscription = await apiQueue.enqueue(
                   `check-transcription-${chartId}`,
                   () => chartTranscriptionAPI.getTranscription(chartId)
                 );
                 
-                // If transcription exists, skip this chart
-                if (existingTranscription?.data?.exists === true) {
-                  console.log(`[Dashboard Startup] Chart ${chartId} already has transcription in DB, skipping`);
-                  continue;
-                }
+                // 🔍 DEBUG: Log what we found
+                console.log(`[Dashboard Startup] Chart ${chartId} transcription check:`, {
+                  exists: existingTranscription?.data?.exists,
+                  hasText: !!(existingTranscription?.data?.transcription_text),
+                  textLength: existingTranscription?.data?.transcription_text?.length || 0
+                });
+                
+                // ⚠️ CHANGED: On first load, we ALWAYS create transcriptions (even if they exist)
+                // This ensures we have fresh transcriptions with the latest chart data
+                // The backend will handle signature checking and skip if data hasn't changed
+                console.log(`[Dashboard Startup] Chart ${chartId} will be sent to OpenAI for transcription (first load always creates)`);
                 
                 // Find the chart element
                 let chartElement = document.querySelector(`[data-chart-id="${chartId}"] .recharts-wrapper`);
@@ -188,19 +196,22 @@ export const useDashboardData = () => {
               }
             }
             
-            // Send all charts to OpenAI via startup-fill (only creates if missing)
+            // Send all charts to OpenAI via startup-fill
+            // ⚠️ CRITICAL: On first load, we ALWAYS call OpenAI (force=true) to ensure fresh transcriptions
             if (chartsForStartupFill.length > 0) {
-              console.log(`[Dashboard Startup] 📤 Sending ${chartsForStartupFill.length} charts to OpenAI via startup-fill...`);
+              console.log(`[Dashboard Startup] 📤 Sending ${chartsForStartupFill.length} charts to OpenAI via startup-fill (force=true for first load)...`);
               
               try {
-                await chartTranscriptionAPI.startupFill(chartsForStartupFill);
+                // ⚠️ CRITICAL: force=true ensures OpenAI is called even if transcription exists
+                // This matches the requirement: "after opening the site for the first time, call OpenAI"
+                await chartTranscriptionAPI.startupFill(chartsForStartupFill, true);
                 console.log(`[Dashboard Startup] ✅ All charts sent to OpenAI and saved to DB`);
               } catch (err) {
                 console.error(`[Dashboard Startup] Failed to send charts to OpenAI:`, err);
                 // Don't fail the whole dashboard load if transcription creation fails
               }
             } else {
-              console.log(`[Dashboard Startup] All charts already have transcriptions in DB`);
+              console.log(`[Dashboard Startup] ⚠️ No charts prepared for transcription (chart elements not found)`);
             }
           } catch (err) {
             console.error('[Dashboard Startup] Failed to process chart transcriptions:', err);

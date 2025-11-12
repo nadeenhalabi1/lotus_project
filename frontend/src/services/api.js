@@ -158,9 +158,11 @@ export const chartTranscriptionAPI = {
       model
     });
   },
-  // POST: Startup fill - batch process all charts (runs OpenAI only if needed)
-  startupFill: (charts) => {
-    return api.post('/ai/chart-transcription/startup-fill', { charts });
+  // POST: Startup fill - batch process all charts
+  // If force=true, always calls OpenAI (even if transcription exists)
+  // If force=false, only calls OpenAI if transcription missing or signature changed
+  startupFill: (charts, force = false) => {
+    return api.post('/ai/chart-transcription/startup-fill', { charts, force });
   },
   // POST: Refresh transcription (always runs OpenAI and overwrites DB) - Refresh/Morning flow
   // If force=true, always calls OpenAI. If force=false, checks signature first.
