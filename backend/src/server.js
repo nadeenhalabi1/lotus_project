@@ -33,8 +33,30 @@ app.use((req, res, next) => {
 
 // Middleware
 app.use(cors(securityConfig.cors));
-app.use(express.json({ limit: '10mb' })); // Increased limit for chart images
-app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Increased limit for chart images
+
+// JSON body parser with error handling
+app.use(express.json({ 
+  limit: '50mb', // Increased limit for chart images (8 charts with base64 can be large)
+  verify: (req, res, buf, encoding) => {
+    // Log request size for debugging
+    if (req.url.includes('/chart-transcription')) {
+      console.log(`[BodyParser] Request size: ${buf.length} bytes (${(buf.length / 1024 / 1024).toFixed(2)} MB)`);
+    }
+  }
+}));
+
+// Error handler for JSON parsing
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('[BodyParser] ❌ JSON parsing error:', err.message);
+    console.error('[BodyParser] Request URL:', req.url);
+    console.error('[BodyParser] Request size:', req.headers['content-length'] || 'unknown');
+    return res.status(400).json({ ok: false, error: 'Invalid JSON in request body', details: err.message });
+  }
+  next(err);
+});
+
+app.use(express.urlencoded({ extended: true, limit: '50mb' })); // Increased limit for chart images
 app.use(rateLimiter); // Rate limiting
 app.use(auditMiddleware); // Audit logging for all requests
 
