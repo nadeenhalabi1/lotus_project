@@ -264,31 +264,60 @@ router.post('/chart-transcription/startup', async (req, res) => {
   console.log(`[startup] 📥 RECEIVED /chart-transcription/startup REQUEST`);
   console.log(`[startup] Request method:`, req.method);
   console.log(`[startup] Request headers content-type:`, req.headers['content-type']);
+  console.log(`[startup] Request headers content-length:`, req.headers['content-length']);
   console.log(`[startup] Request body type:`, typeof req.body);
-  console.log(`[startup] Request body:`, req.body);
-  console.log(`[startup] Request body keys:`, Object.keys(req.body || {}));
-  console.log(`[startup] Request body charts type:`, typeof req.body?.charts);
-  console.log(`[startup] Request body charts isArray:`, Array.isArray(req.body?.charts));
-  console.log(`[startup] Request body charts length:`, req.body?.charts?.length);
+  console.log(`[startup] Request body is null:`, req.body === null);
+  console.log(`[startup] Request body is undefined:`, req.body === undefined);
+  console.log(`[startup] Request body keys:`, req.body ? Object.keys(req.body) : 'N/A');
   
-  // Check if body is empty or undefined
+  // Check if body exists at all
   if (!req.body) {
-    console.error(`[startup] ❌ ERROR: Request body is empty or undefined`);
-    return res.status(400).json({ ok: false, error: 'Request body is required' });
+    console.error(`[startup] ❌ ERROR: Request body is null or undefined`);
+    console.error(`[startup] This might indicate a body parsing issue or request too large`);
+    return res.status(400).json({ 
+      ok: false, 
+      error: 'Request body is required',
+      hint: 'Check if request body size exceeds limit or JSON parsing failed'
+    });
   }
   
   const { charts } = req.body;
+  
+  console.log(`[startup] charts type:`, typeof charts);
+  console.log(`[startup] charts isArray:`, Array.isArray(charts));
+  console.log(`[startup] charts length:`, charts?.length);
+  
+  // Log first chart structure if available
+  if (Array.isArray(charts) && charts.length > 0) {
+    console.log(`[startup] First chart keys:`, Object.keys(charts[0] || {}));
+    console.log(`[startup] First chart structure:`, {
+      hasChartId: !!charts[0]?.chartId,
+      hasImageUrl: !!charts[0]?.imageUrl,
+      hasContext: !!charts[0]?.context,
+      chartIdType: typeof charts[0]?.chartId,
+      imageUrlType: typeof charts[0]?.imageUrl,
+      imageUrlLength: charts[0]?.imageUrl?.length
+    });
+  }
   
   if (!Array.isArray(charts)) {
     console.error(`[startup] ❌ ERROR: charts is not an array`);
     console.error(`[startup] charts value:`, charts);
     console.error(`[startup] charts type:`, typeof charts);
-    return res.status(400).json({ ok: false, error: 'charts[] required and must be an array' });
+    return res.status(400).json({ 
+      ok: false, 
+      error: 'charts[] required and must be an array',
+      received: typeof charts,
+      bodyKeys: Object.keys(req.body)
+    });
   }
 
   if (charts.length === 0) {
     console.error(`[startup] ❌ ERROR: charts array is empty`);
-    return res.status(400).json({ ok: false, error: 'charts[] must not be empty' });
+    return res.status(400).json({ 
+      ok: false, 
+      error: 'charts[] must not be empty' 
+    });
   }
 
   console.log(`[startup] Processing ${charts.length} charts sequentially (always call OpenAI)...`);
@@ -382,13 +411,35 @@ router.post('/chart-transcription/startup', async (req, res) => {
 
   console.log(`[startup] ========================================`);
   console.log(`[startup] 📊 FINAL RESULTS:`);
+  console.log(`[startup] Total received: ${charts.length}`);
   console.log(`[startup] Total processed: ${results.length}`);
   console.log(`[startup] Created: ${results.filter(r => r.status === 'created').length}`);
   console.log(`[startup] Errors: ${results.filter(r => r.status === 'error').length}`);
   console.log(`[startup] Skipped: ${results.filter(r => r.status === 'skip-invalid').length}`);
   console.log(`[startup] ========================================`);
 
-  res.json({ ok: true, results });
+  const processedCount = results.filter(r => r.status === 'created').length;
+  const errorCount = results.filter(r => r.status === 'error').length;
+  const skippedCount = results.filter(r => r.status === 'skip-invalid').length;
+  const errors = results
+    .filter(r => r.status === 'error' || r.status === 'skip-invalid')
+    .map(r => ({ chartId: r.chartId, reason: r.error || 'Invalid chart data' }));
+
+  // Determine status
+  let status = 'ok';
+  if (errorCount > 0 || skippedCount > 0) {
+    status = processedCount > 0 ? 'partial' : 'error';
+  }
+
+  // Always return 200 unless there's a critical issue (which would have returned 400 earlier)
+  res.status(200).json({
+    status,
+    totalChartsReceived: charts.length,
+    processedCharts: processedCount,
+    skippedCharts: skippedCount,
+    errors: errors.length > 0 ? errors : [],
+    results // Include detailed results for debugging
+  });
 });
 
 /**
@@ -627,23 +678,65 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
  * - Each chart: OpenAI call → Save to DB (overwrite) → Wait → Next chart
  */
 router.post('/chart-transcription/refresh', async (req, res) => {
-  const { charts } = req.body || {};
-  
   console.log(`[refresh] ========================================`);
   console.log(`[refresh] 📥 RECEIVED /chart-transcription/refresh REQUEST`);
+  console.log(`[refresh] Request method:`, req.method);
+  console.log(`[refresh] Request headers content-type:`, req.headers['content-type']);
+  console.log(`[refresh] Request headers content-length:`, req.headers['content-length']);
   console.log(`[refresh] Request body type:`, typeof req.body);
+  console.log(`[refresh] Request body is null:`, req.body === null);
+  console.log(`[refresh] Request body is undefined:`, req.body === undefined);
+  console.log(`[refresh] Request body keys:`, req.body ? Object.keys(req.body) : 'N/A');
+  
+  // Check if body exists at all
+  if (!req.body) {
+    console.error(`[refresh] ❌ ERROR: Request body is null or undefined`);
+    console.error(`[refresh] This might indicate a body parsing issue or request too large`);
+    return res.status(400).json({ 
+      ok: false, 
+      error: 'Request body is required',
+      hint: 'Check if request body size exceeds limit or JSON parsing failed'
+    });
+  }
+  
+  const { charts } = req.body;
+  
   console.log(`[refresh] charts type:`, typeof charts);
   console.log(`[refresh] charts isArray:`, Array.isArray(charts));
   console.log(`[refresh] charts length:`, charts?.length);
+  console.log(`[refresh] charts value:`, charts);
+  
+  // Log first chart structure if available
+  if (Array.isArray(charts) && charts.length > 0) {
+    console.log(`[refresh] First chart keys:`, Object.keys(charts[0] || {}));
+    console.log(`[refresh] First chart structure:`, {
+      hasChartId: !!charts[0]?.chartId,
+      hasImageUrl: !!charts[0]?.imageUrl,
+      hasContext: !!charts[0]?.context,
+      chartIdType: typeof charts[0]?.chartId,
+      imageUrlType: typeof charts[0]?.imageUrl,
+      imageUrlLength: charts[0]?.imageUrl?.length
+    });
+  }
   
   if (!Array.isArray(charts)) {
     console.error(`[refresh] ❌ ERROR: charts is not an array`);
-    return res.status(400).json({ ok: false, error: 'charts[] required and must be an array' });
+    console.error(`[refresh] charts value:`, charts);
+    console.error(`[refresh] charts type:`, typeof charts);
+    return res.status(400).json({ 
+      ok: false, 
+      error: 'charts[] required and must be an array',
+      received: typeof charts,
+      bodyKeys: Object.keys(req.body)
+    });
   }
   
   if (charts.length === 0) {
     console.error(`[refresh] ❌ ERROR: charts array is empty`);
-    return res.status(400).json({ ok: false, error: 'charts[] must not be empty' });
+    return res.status(400).json({ 
+      ok: false, 
+      error: 'charts[] must not be empty' 
+    });
   }
 
   console.log(`[refresh] 🚀 Processing ${charts.length} charts sequentially (always overwrite)...`);
@@ -737,13 +830,35 @@ router.post('/chart-transcription/refresh', async (req, res) => {
 
   console.log(`[refresh] ========================================`);
   console.log(`[refresh] 📊 FINAL RESULTS:`);
+  console.log(`[refresh] Total received: ${charts.length}`);
   console.log(`[refresh] Total processed: ${results.length}`);
   console.log(`[refresh] Updated: ${results.filter(r => r.status === 'updated').length}`);
   console.log(`[refresh] Errors: ${results.filter(r => r.status === 'error').length}`);
   console.log(`[refresh] Skipped: ${results.filter(r => r.status === 'skip-invalid').length}`);
   console.log(`[refresh] ========================================`);
 
-  res.json({ ok: true, results });
+  const processedCount = results.filter(r => r.status === 'updated').length;
+  const errorCount = results.filter(r => r.status === 'error').length;
+  const skippedCount = results.filter(r => r.status === 'skip-invalid').length;
+  const errors = results
+    .filter(r => r.status === 'error' || r.status === 'skip-invalid')
+    .map(r => ({ chartId: r.chartId, reason: r.error || 'Invalid chart data' }));
+
+  // Determine status
+  let status = 'ok';
+  if (errorCount > 0 || skippedCount > 0) {
+    status = processedCount > 0 ? 'partial' : 'error';
+  }
+
+  // Always return 200 unless there's a critical issue (which would have returned 400 earlier)
+  res.status(200).json({
+    status,
+    totalChartsReceived: charts.length,
+    processedCharts: processedCount,
+    skippedCharts: skippedCount,
+    errors: errors.length > 0 ? errors : [],
+    results // Include detailed results for debugging
+  });
 });
 
 /**
