@@ -38,31 +38,46 @@ const DashboardContainer = () => {
   }, [refreshStatus]);
 
   // Load all charts (priority + BOX) for rendering (including hidden charts for transcription)
-  // Only load once when data is first available, not on every navigation
-  const allChartsLoadedRef = useRef(false);
+  // Only load once per session to avoid unnecessary API calls when navigating
   useEffect(() => {
     const loadAllCharts = async () => {
-      // Only load once per session to avoid unnecessary API calls when navigating
-      if (allChartsLoadedRef.current) {
-        return;
+      // Check sessionStorage to see if we already loaded all charts in this session
+      try {
+        const alreadyLoaded = sessionStorage.getItem('allChartsLoaded') === 'true';
+        if (alreadyLoaded && allCharts) {
+          // Already loaded in this session and we have the data - skip
+          return;
+        }
+      } catch {
+        // Ignore if sessionStorage is not available
       }
       
       try {
         const response = await dashboardAPI.getAllCharts();
         setAllCharts(response.data?.charts || []);
-        allChartsLoadedRef.current = true;
+        // Mark as loaded in sessionStorage
+        try {
+          sessionStorage.setItem('allChartsLoaded', 'true');
+        } catch {
+          // Ignore if sessionStorage is not available
+        }
       } catch (err) {
         console.error('[DashboardContainer] Failed to load all charts:', err);
         // Fallback to dashboard data if available
         setAllCharts(data?.charts || []);
-        allChartsLoadedRef.current = true; // Mark as loaded even on error to prevent retries
+        // Mark as loaded even on error to prevent retries
+        try {
+          sessionStorage.setItem('allChartsLoaded', 'true');
+        } catch {
+          // Ignore if sessionStorage is not available
+        }
       }
     };
 
-    if (data?.charts && !allChartsLoadedRef.current) {
+    if (data?.charts) {
       loadAllCharts();
     }
-  }, [data?.charts]);
+  }, [data?.charts, allCharts]);
 
   const priorityCharts = useMemo(() => {
     return allCharts?.filter((chart) => chart.metadata?.isPriority !== false) || data?.charts?.filter((chart) => chart.metadata?.isPriority !== false) || [];

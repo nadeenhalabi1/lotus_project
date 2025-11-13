@@ -11,7 +11,25 @@ export const useDashboardData = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshStatus, setRefreshStatus] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const startupTranscriptionDoneRef = useRef(false); // Track if startup transcription has already run
+  // Track if startup transcription has already run in this session
+  // Use sessionStorage to persist across page navigations (but reset on browser close)
+  const getStartupTranscriptionDone = () => {
+    try {
+      return sessionStorage.getItem('startupTranscriptionDone') === 'true';
+    } catch {
+      return false;
+    }
+  };
+  
+  const setStartupTranscriptionDone = (value) => {
+    try {
+      sessionStorage.setItem('startupTranscriptionDone', value ? 'true' : 'false');
+    } catch {
+      // Ignore if sessionStorage is not available
+    }
+  };
+  
+  const startupTranscriptionDoneRef = useRef(getStartupTranscriptionDone());
 
   const fetchDashboard = async (autoRefreshIfEmpty = false) => {
     try {
@@ -135,11 +153,13 @@ export const useDashboardData = () => {
         // ⚠️ CRITICAL: On startup, send ALL charts (not just priority) to OpenAI for transcription
         // BUT: Only run startup transcription ONCE per session (not every time we navigate to dashboard)
         // This prevents unnecessary OpenAI calls when switching between Dashboard and Reports
-        if (!startupTranscriptionDoneRef.current) {
+        const isStartupDone = getStartupTranscriptionDone();
+        if (!isStartupDone) {
           console.log(`[Dashboard] ✅ Dashboard loaded with ${dashboardData.charts?.length || 0} priority charts`);
           console.log(`[Dashboard] 🚀 Starting startup transcription flow for ALL charts (first time only)...`);
           
-          // Mark as done immediately to prevent duplicate runs
+          // Mark as done immediately to prevent duplicate runs (persist in sessionStorage)
+          setStartupTranscriptionDone(true);
           startupTranscriptionDoneRef.current = true;
           
           // Fetch ALL charts (priority + BOX + combined analytics) for transcription
@@ -291,7 +311,8 @@ export const useDashboardData = () => {
             })();
           }
         } else {
-          console.log(`[Dashboard] ⏭️ Skipping startup transcription - already completed in this session`);
+          const isDone = getStartupTranscriptionDone();
+          console.log(`[Dashboard] ⏭️ Skipping startup transcription - already completed in this session (sessionStorage: ${isDone})`);
         }
       }
     } catch (err) {
