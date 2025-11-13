@@ -3,6 +3,7 @@ import { startContentStudioScheduler } from './ContentStudioJob.js';
 import { startAssessmentScheduler } from './AssessmentJob.js';
 import { startCourseBuilderScheduler } from './CourseBuilderJob.js';
 import { startDirectoryScheduler } from './DirectoryJob.js';
+import { startLearningAnalyticsScheduler } from './LearningAnalyticsJob.js';
 
 // Note: JWT token should be obtained from environment or auth service
 // For now, using a placeholder - in production, this should be managed properly
@@ -25,6 +26,9 @@ export const initializeJobs = async () => {
   
   // Initialize Directory sync job (runs daily at 06:00 Asia/Jerusalem)
   startDirectoryScheduler();
+  
+  // Initialize Learning Analytics sync job (runs daily at 06:00 Asia/Jerusalem)
+  startLearningAnalyticsScheduler();
   
   // ALWAYS load initial mock data (for MVP - both development and production)
   try {
