@@ -456,3 +456,4 @@ CREATE TABLE public.ai_chart_transcriptions (
 
 Ready for manual testing. 🚀
 
+

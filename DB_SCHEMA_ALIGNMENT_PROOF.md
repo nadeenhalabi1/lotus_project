@@ -472,3 +472,4 @@ CREATE TABLE public.ai_chart_transcriptions (
 
 **Next:** Manual testing to prove end-to-end.
 
+
