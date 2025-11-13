@@ -86,6 +86,16 @@ app.listen(PORT, () => {
       } catch (err) {
         console.error('[DB] ❌ Database health check error:', err.message);
       }
+      
+      // ⚠️ CRITICAL: Check and fix permissions for ai_chart_transcriptions
+      // Supabase tables created via migration may be read-only
+      try {
+        const { checkAndFixPermissions } = await import('../../scripts/checkAndFixPermissions.js');
+        await checkAndFixPermissions();
+      } catch (permErr) {
+        console.error('[Startup] Permissions check error (non-fatal):', permErr.message);
+        // Don't block startup - permissions can be fixed manually
+      }
     }
     
     // Initialize scheduled jobs (async - loads initial mock data in development) - non-blocking

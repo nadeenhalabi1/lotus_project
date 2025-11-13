@@ -204,7 +204,38 @@ export const useDashboardData = () => {
       });
 
       // After data refresh, refresh all chart transcriptions with OpenAI
-      // Wait for charts to render first
+      // Wait for charts to render first - CRITICAL: Recharts needs time to render
+      // Use longer delay and wait for actual chart elements to appear
+      const waitForCharts = async (maxAttempts = 20, delayMs = 500) => {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          const chartElements = document.querySelectorAll('[data-chart-id]');
+          const rechartsElements = document.querySelectorAll('.recharts-wrapper');
+          
+          if (chartElements.length > 0 && rechartsElements.length > 0) {
+            console.log(`[Dashboard Refresh] ✅ Charts rendered after ${attempt * delayMs}ms`);
+            console.log(`[Dashboard Refresh] Found ${chartElements.length} chart cards and ${rechartsElements.length} recharts wrappers`);
+            return true;
+          }
+          
+          if (attempt < maxAttempts - 1) {
+            console.log(`[Dashboard Refresh] ⏳ Waiting for charts to render... (attempt ${attempt + 1}/${maxAttempts})`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+          }
+        }
+        return false;
+      };
+      
+      // Wait for charts to render, then proceed
+      const chartsReady = await waitForCharts(20, 500); // Wait up to 10 seconds
+      
+      if (!chartsReady) {
+        console.error(`[Dashboard Refresh] ❌ Charts did not render after 10 seconds, aborting capture`);
+        return;
+      }
+      
+      // Additional delay to ensure Recharts is fully rendered
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       setTimeout(async () => {
         if (dashboardData.charts && dashboardData.charts.length > 0) {
           try {
