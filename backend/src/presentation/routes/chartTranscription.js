@@ -252,12 +252,12 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
 
 /**
  * POST /api/v1/ai/chart-transcription/startup
- * New workflow: Sequentially transcribe all charts on first load
+ * Startup workflow: Sequentially transcribe all charts on first load
  * body: { charts: [{ chartId, imageUrl, context? }] }
  * 
  * - Processes charts sequentially (one at a time) to prevent OpenAI rate limits
- * - Only saves transcription if it doesn't already exist (skips if exists)
- * - Each chart: Check if exists → If not, OpenAI call → Save to DB → Wait → Next chart
+ * - ALWAYS calls OpenAI and saves to DB (even if transcription exists)
+ * - Each chart: OpenAI call → Save to DB (UPSERT) → Wait → Next chart
  */
 router.post('/chart-transcription/startup', async (req, res) => {
   const { charts } = req.body || {};
@@ -266,14 +266,32 @@ router.post('/chart-transcription/startup', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'charts[] required' });
   }
 
-  console.log(`[startup] Processing ${charts.length} charts sequentially...`);
+  if (charts.length === 0) {
+    return res.status(400).json({ ok: false, error: 'charts[] must not be empty' });
+  }
+
+  console.log(`[startup] ========================================`);
+  console.log(`[startup] 📥 RECEIVED /chart-transcription/startup REQUEST`);
+  console.log(`[startup] Processing ${charts.length} charts sequentially (always call OpenAI)...`);
+  console.log(`[startup] Chart IDs received:`, charts.map(c => c?.chartId));
+  
   const results = [];
 
   // Process charts sequentially (one at a time)
   for (let i = 0; i < charts.length; i++) {
     const c = charts[i];
     
+    console.log(`[startup] ========================================`);
+    console.log(`[startup] Processing chart ${i + 1}/${charts.length}`);
+    console.log(`[startup] Chart object:`, {
+      chartId: c?.chartId,
+      hasImageUrl: !!c?.imageUrl,
+      imageUrlLength: c?.imageUrl?.length,
+      context: c?.context
+    });
+    
     if (!c?.chartId || !c?.imageUrl) {
+      console.error(`[startup] ❌ SKIPPING: Invalid chart (missing chartId or imageUrl)`);
       results.push({ chartId: c?.chartId || 'unknown', status: 'skip-invalid' });
       continue;
     }
@@ -281,27 +299,24 @@ router.post('/chart-transcription/startup', async (req, res) => {
     const { chartId, imageUrl, context } = c;
 
     try {
-      // Check if transcription already exists
-      const existing = await getTranscriptionByChartId(chartId);
-      if (existing) {
-        console.log(`[startup] Chart ${chartId} already has transcription, skipping`);
-        results.push({ chartId, status: 'exists' });
-        continue;
-      }
-
       // Add delay between charts (except first)
       if (i > 0) {
+        console.log(`[startup] ⏳ Waiting 800ms before next chart...`);
         await new Promise(resolve => setTimeout(resolve, 800));
       }
 
-      // Call OpenAI to get transcription
-      console.log(`[startup] ========================================`);
-      console.log(`[startup] Chart ${i + 1}/${charts.length}: 📞 Calling OpenAI for ${chartId}...`);
+      // Always call OpenAI to get transcription (even if exists in DB)
+      console.log(`[startup] Chart ${chartId}: 📞 Calling OpenAI Vision API...`);
+      console.log(`[startup] Chart ${chartId}: Image size: ${imageUrl.length} chars`);
+      console.log(`[startup] Chart ${chartId}: Context: "${context}"`);
+      
       const text = await openaiQueue.enqueue(async () => {
         return await transcribeChartImage({ imageUrl, context });
       });
 
-      console.log(`[startup] Chart ${chartId}: ✅ OpenAI returned text (${text?.length || 0} chars)`);
+      console.log(`[startup] Chart ${chartId}: ✅ OpenAI returned text`);
+      console.log(`[startup] Chart ${chartId}: Text length: ${text?.length || 0} chars`);
+      console.log(`[startup] Chart ${chartId}: Text preview: ${text?.substring(0, 100)}...`);
 
       if (!text || !text.trim()) {
         console.error(`[startup] Chart ${chartId}: ❌ ERROR - OpenAI returned empty transcription`);
@@ -309,16 +324,50 @@ router.post('/chart-transcription/startup', async (req, res) => {
         continue;
       }
 
-      // Save to DB
-      console.log(`[startup] Chart ${chartId}: 💾 Saving to DB...`);
-      await upsertTranscriptionSimple({ chartId, text });
-      console.log(`[startup] Chart ${chartId}: ✅✅✅ SUCCESSFULLY SAVED TO DB!`);
-      results.push({ chartId, status: 'created' });
+      // Save to DB (UPSERT - will overwrite if exists)
+      console.log(`[startup] Chart ${chartId}: 💾💾💾 CALLING upsertTranscriptionSimple...`);
+      console.log(`[startup] Chart ${chartId}: Parameters: chartId="${chartId}", textLength=${text.length}`);
+      console.log(`[startup] Chart ${chartId}: DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
+      
+      let savedData;
+      try {
+        savedData = await upsertTranscriptionSimple({ chartId, text });
+        console.log(`[startup] Chart ${chartId}: ✅ upsertTranscriptionSimple returned successfully`);
+      } catch (saveErr) {
+        console.error(`[startup] Chart ${chartId}: ❌❌❌ CRITICAL: upsertTranscriptionSimple FAILED!`);
+        console.error(`[startup] Chart ${chartId}: Error message: ${saveErr.message}`);
+        console.error(`[startup] Chart ${chartId}: Error stack: ${saveErr.stack}`);
+        throw saveErr; // Re-throw to be caught by outer catch
+      }
+      
+      console.log(`[startup] Chart ${chartId}: ✅✅✅ DB WRITE VERIFIED!`);
+      console.log(`[startup] Chart ${chartId}: Verified chartId: ${savedData.chartId}`);
+      console.log(`[startup] Chart ${chartId}: Verified text length: ${savedData.transcriptionText?.length}`);
+      console.log(`[startup] Chart ${chartId}: Verified updated_at: ${savedData.updatedAt}`);
+      
+      results.push({ 
+        chartId, 
+        status: 'created',
+        verified: true,
+        textLength: savedData.transcriptionText?.length,
+        updatedAt: savedData.updatedAt
+      });
     } catch (err) {
-      console.error(`[startup] Error for chart ${chartId}:`, err.message);
+      console.error(`[startup] Chart ${chartId}: ❌ ERROR:`, {
+        message: err.message,
+        stack: err.stack
+      });
       results.push({ chartId, status: 'error', error: err.message });
     }
   }
+
+  console.log(`[startup] ========================================`);
+  console.log(`[startup] 📊 FINAL RESULTS:`);
+  console.log(`[startup] Total processed: ${results.length}`);
+  console.log(`[startup] Created: ${results.filter(r => r.status === 'created').length}`);
+  console.log(`[startup] Errors: ${results.filter(r => r.status === 'error').length}`);
+  console.log(`[startup] Skipped: ${results.filter(r => r.status === 'skip-invalid').length}`);
+  console.log(`[startup] ========================================`);
 
   res.json({ ok: true, results });
 });
