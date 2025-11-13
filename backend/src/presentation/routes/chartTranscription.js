@@ -260,18 +260,37 @@ router.post('/chart-transcription/:chartId', async (req, res) => {
  * - Each chart: OpenAI call → Save to DB (UPSERT) → Wait → Next chart
  */
 router.post('/chart-transcription/startup', async (req, res) => {
-  const { charts } = req.body || {};
+  console.log(`[startup] ========================================`);
+  console.log(`[startup] 📥 RECEIVED /chart-transcription/startup REQUEST`);
+  console.log(`[startup] Request method:`, req.method);
+  console.log(`[startup] Request headers content-type:`, req.headers['content-type']);
+  console.log(`[startup] Request body type:`, typeof req.body);
+  console.log(`[startup] Request body:`, req.body);
+  console.log(`[startup] Request body keys:`, Object.keys(req.body || {}));
+  console.log(`[startup] Request body charts type:`, typeof req.body?.charts);
+  console.log(`[startup] Request body charts isArray:`, Array.isArray(req.body?.charts));
+  console.log(`[startup] Request body charts length:`, req.body?.charts?.length);
+  
+  // Check if body is empty or undefined
+  if (!req.body) {
+    console.error(`[startup] ❌ ERROR: Request body is empty or undefined`);
+    return res.status(400).json({ ok: false, error: 'Request body is required' });
+  }
+  
+  const { charts } = req.body;
   
   if (!Array.isArray(charts)) {
-    return res.status(400).json({ ok: false, error: 'charts[] required' });
+    console.error(`[startup] ❌ ERROR: charts is not an array`);
+    console.error(`[startup] charts value:`, charts);
+    console.error(`[startup] charts type:`, typeof charts);
+    return res.status(400).json({ ok: false, error: 'charts[] required and must be an array' });
   }
 
   if (charts.length === 0) {
+    console.error(`[startup] ❌ ERROR: charts array is empty`);
     return res.status(400).json({ ok: false, error: 'charts[] must not be empty' });
   }
 
-  console.log(`[startup] ========================================`);
-  console.log(`[startup] 📥 RECEIVED /chart-transcription/startup REQUEST`);
   console.log(`[startup] Processing ${charts.length} charts sequentially (always call OpenAI)...`);
   console.log(`[startup] Chart IDs received:`, charts.map(c => c?.chartId));
   
