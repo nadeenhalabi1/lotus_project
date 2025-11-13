@@ -67,15 +67,57 @@ create index if not exists idx_csc_cache_course on public.content_studio_content
 -- 4) Learning Analytics
 create table if not exists public.learning_analytics_cache (
   snapshot_date date not null,
+  version text not null,
   period text not null check (period in ('daily','weekly','monthly')),
   start_date timestamptz not null,
   end_date   timestamptz not null,
-  metrics jsonb not null,
-  category_breakdowns jsonb not null,
+
+  -- aggregated_statistics.metrics
+  total_learners int,
+  active_learners int,
+  total_courses int,
+  courses_completed int,
+  average_completion_rate numeric(5,2),
+  total_skills_acquired int,
+  average_competency_level_progression numeric(5,2),
+  engagement_score_average numeric(5,2),
+  drop_off_rate numeric(5,2),
+  total_topics int,
+  average_topics_per_content numeric(5,2),
+  average_lessons_per_course numeric(5,2),
+  average_attempts_per_assessment numeric(5,2),
+  total_assessments int,
+  pass_rate numeric(5,2),
+  total_unique_learning_paths int,
+  average_skills_per_learning_path numeric(5,2),
+  average_skills_per_competency numeric(5,2),
+
+  -- platform_skill_demand (nested structure from metrics.platform_skill_demand)
+  platform_skill_demand jsonb,
+
+  -- category_breakdowns.by_competency_level
+  beginner_count int,
+  intermediate_count int,
+  advanced_count int,
+  expert_count int,
+
+  -- category_breakdowns.by_content_format_usage
+  video_usage_count int,
+  text_usage_count int,
+  code_usage_count int,
+  presentation_usage_count int,
+  mindmap_usage_count int,
+
+  -- category_breakdowns.by_engagement_level
+  high_engagement_count int,
+  medium_engagement_count int,
+  low_engagement_count int,
+
   calculated_at timestamptz not null,
   ingested_at timestamptz not null default now(),
   primary key (snapshot_date, period, start_date, end_date)
 );
+
 create index if not exists idx_la_cache_date   on public.learning_analytics_cache(snapshot_date);
 create index if not exists idx_la_cache_period on public.learning_analytics_cache(period, start_date, end_date);
 

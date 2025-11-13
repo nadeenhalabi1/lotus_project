@@ -1,4 +1,8 @@
 import { initializeDailyCollection, triggerManualCollection } from './DailyCollectionJob.js';
+import { startContentStudioScheduler } from './ContentStudioJob.js';
+import { startAssessmentScheduler } from './AssessmentJob.js';
+import { startCourseBuilderScheduler } from './CourseBuilderJob.js';
+import { startDirectoryScheduler } from './DirectoryJob.js';
 
 // Note: JWT token should be obtained from environment or auth service
 // For now, using a placeholder - in production, this should be managed properly
@@ -9,6 +13,18 @@ export const initializeJobs = async () => {
   
   // Initialize daily collection job
   initializeDailyCollection(JWT_TOKEN);
+  
+  // Initialize Content Studio sync job (runs daily at 06:00 Asia/Jerusalem)
+  startContentStudioScheduler();
+  
+  // Initialize Assessment sync job (runs daily at 06:00 Asia/Jerusalem)
+  startAssessmentScheduler();
+  
+  // Initialize Course Builder sync job (runs daily at 06:00 Asia/Jerusalem)
+  startCourseBuilderScheduler();
+  
+  // Initialize Directory sync job (runs daily at 06:00 Asia/Jerusalem)
+  startDirectoryScheduler();
   
   // ALWAYS load initial mock data (for MVP - both development and production)
   try {
