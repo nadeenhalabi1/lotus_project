@@ -35,6 +35,14 @@ const DashboardContainer = () => {
     }, {});
   }, [refreshStatus]);
 
+  const priorityCharts = useMemo(() => {
+    return data?.charts?.filter((chart) => chart.metadata?.isPriority !== false) || [];
+  }, [data?.charts]);
+
+  const boxCharts = useMemo(() => {
+    return data?.charts?.filter((chart) => chart.metadata?.isPriority === false) || [];
+  }, [data?.charts]);
+
   const handleChartClick = (chart) => {
     if (!chart || !chart.id) return;
     const service = chart.metadata?.service;
@@ -139,11 +147,32 @@ const DashboardContainer = () => {
           </button>
         </div>
         <ChartGrid
-          charts={data.charts}
+          charts={priorityCharts}
           onChartClick={handleChartClick}
           failedServices={failedServicesMap}
         />
       </div>
+
+      {/* Hidden container to render BOX charts for transcription capture */}
+      {boxCharts.length > 0 && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: '-9999px',
+            left: '-9999px',
+            width: '1200px',
+            pointerEvents: 'none',
+            opacity: 0,
+          }}
+        >
+          <ChartGrid
+            charts={boxCharts}
+            onChartClick={() => {}}
+            failedServices={failedServicesMap}
+          />
+        </div>
+      )}
 
       <BOXSidebar
         isOpen={boxOpen}
