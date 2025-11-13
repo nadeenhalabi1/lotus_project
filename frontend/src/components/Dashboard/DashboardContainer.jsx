@@ -38,20 +38,9 @@ const DashboardContainer = () => {
   }, [refreshStatus]);
 
   // Load all charts (priority + BOX) for rendering (including hidden charts for transcription)
-  // Only load once per session to avoid unnecessary API calls when navigating
+  // ⚠️ CRITICAL: Always reload when data changes to ensure charts update after Refresh Data
   useEffect(() => {
     const loadAllCharts = async () => {
-      // Check sessionStorage to see if we already loaded all charts in this session
-      try {
-        const alreadyLoaded = sessionStorage.getItem('allChartsLoaded') === 'true';
-        if (alreadyLoaded && allCharts) {
-          // Already loaded in this session and we have the data - skip
-          return;
-        }
-      } catch {
-        // Ignore if sessionStorage is not available
-      }
-      
       try {
         const response = await dashboardAPI.getAllCharts();
         setAllCharts(response.data?.charts || []);
@@ -77,7 +66,7 @@ const DashboardContainer = () => {
     if (data?.charts) {
       loadAllCharts();
     }
-  }, [data?.charts, allCharts]);
+  }, [data?.charts]); // Remove allCharts from dependencies - always reload when data changes
 
   const priorityCharts = useMemo(() => {
     return allCharts?.filter((chart) => chart.metadata?.isPriority !== false) || data?.charts?.filter((chart) => chart.metadata?.isPriority !== false) || [];
