@@ -153,142 +153,143 @@ export const useDashboardData = () => {
             console.error(`[Dashboard Startup] ❌ Failed to fetch all charts, falling back to dashboard charts:`, err);
             allChartsForTranscription = dashboardData.charts || [];
           }
-        
-        // Wait for charts to render, then capture and send to OpenAI
-        const waitForChartsStartup = async (maxAttempts = 20, delayMs = 500) => {
-          for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            const chartElements = document.querySelectorAll('[data-chart-id]');
-            const rechartsElements = document.querySelectorAll('.recharts-wrapper');
-            
-            if (chartElements.length > 0 && rechartsElements.length > 0) {
-              console.log(`[Dashboard Startup] ✅ Charts rendered after ${attempt * delayMs}ms`);
-              console.log(`[Dashboard Startup] Found ${chartElements.length} chart cards and ${rechartsElements.length} recharts wrappers`);
-              return true;
+          
+          // Wait for charts to render, then capture and send to OpenAI
+          const waitForChartsStartup = async (maxAttempts = 20, delayMs = 500) => {
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+              const chartElements = document.querySelectorAll('[data-chart-id]');
+              const rechartsElements = document.querySelectorAll('.recharts-wrapper');
+              
+              if (chartElements.length > 0 && rechartsElements.length > 0) {
+                console.log(`[Dashboard Startup] ✅ Charts rendered after ${attempt * delayMs}ms`);
+                console.log(`[Dashboard Startup] Found ${chartElements.length} chart cards and ${rechartsElements.length} recharts wrappers`);
+                return true;
+              }
+              
+              if (attempt < maxAttempts - 1) {
+                console.log(`[Dashboard Startup] ⏳ Waiting for charts to render... (attempt ${attempt + 1}/${maxAttempts})`);
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+              }
             }
-            
-            if (attempt < maxAttempts - 1) {
-              console.log(`[Dashboard Startup] ⏳ Waiting for charts to render... (attempt ${attempt + 1}/${maxAttempts})`);
-              await new Promise(resolve => setTimeout(resolve, delayMs));
-            }
+            return false;
+          };
+          
+          // Wait for charts to render, then proceed
+          const chartsReady = await waitForChartsStartup(20, 500); // Wait up to 10 seconds
+          
+          if (!chartsReady) {
+            console.error(`[Dashboard Startup] ❌ Charts did not render after 10 seconds, aborting startup transcription`);
+            return;
           }
-          return false;
-        };
-        
-        // Wait for charts to render, then proceed
-        const chartsReady = await waitForChartsStartup(20, 500); // Wait up to 10 seconds
-        
-        if (!chartsReady) {
-          console.error(`[Dashboard Startup] ❌ Charts did not render after 10 seconds, aborting startup transcription`);
-          return;
-        }
-        
-        // Additional delay to ensure Recharts is fully rendered
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Capture all chart images and send to startup endpoint
-        if (allChartsForTranscription && allChartsForTranscription.length > 0) {
-          (async () => {
-            try {
-              console.log(`[Dashboard Startup] ========================================`);
-              console.log(`[Dashboard Startup] 🚀 STARTING STARTUP TRANSCRIPTION FLOW`);
-              console.log(`[Dashboard Startup] Total charts to process: ${allChartsForTranscription.length}`);
-              console.log(`[Dashboard Startup] Chart IDs:`, allChartsForTranscription.map(c => c.id));
-              
-              // Capture all chart images
-              const chartsForStartup = [];
-              for (let i = 0; i < allChartsForTranscription.length; i++) {
-                const chart = allChartsForTranscription[i];
-                const chartId = chart.id || `chart-${i}`;
+          
+          // Additional delay to ensure Recharts is fully rendered
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // Capture all chart images and send to startup endpoint
+          if (allChartsForTranscription && allChartsForTranscription.length > 0) {
+            (async () => {
+              try {
+                console.log(`[Dashboard Startup] ========================================`);
+                console.log(`[Dashboard Startup] 🚀 STARTING STARTUP TRANSCRIPTION FLOW`);
+                console.log(`[Dashboard Startup] Total charts to process: ${allChartsForTranscription.length}`);
+                console.log(`[Dashboard Startup] Chart IDs:`, allChartsForTranscription.map(c => c.id));
                 
-                try {
-                  // Find the chart element
-                  let chartElement = document.querySelector(`[data-chart-id="${chartId}"] .recharts-wrapper`);
+                // Capture all chart images
+                const chartsForStartup = [];
+                for (let i = 0; i < allChartsForTranscription.length; i++) {
+                  const chart = allChartsForTranscription[i];
+                  const chartId = chart.id || `chart-${i}`;
                   
-                  // Fallback: try to find by chart card
-                  if (!chartElement) {
-                    const chartCard = document.querySelector(`[data-chart-id="${chartId}"]`);
-                    if (chartCard) {
-                      chartElement = chartCard.querySelector('.recharts-wrapper');
+                  try {
+                    // Find the chart element
+                    let chartElement = document.querySelector(`[data-chart-id="${chartId}"] .recharts-wrapper`);
+                    
+                    // Fallback: try to find by chart card
+                    if (!chartElement) {
+                      const chartCard = document.querySelector(`[data-chart-id="${chartId}"]`);
+                      if (chartCard) {
+                        chartElement = chartCard.querySelector('.recharts-wrapper');
+                      }
                     }
-                  }
-                  
-                  // Fallback: try to find by index
-                  if (!chartElement) {
-                    const allChartCards = document.querySelectorAll('[data-chart-id]');
-                    if (allChartCards[i]) {
-                      chartElement = allChartCards[i].querySelector('.recharts-wrapper');
+                    
+                    // Fallback: try to find by index
+                    if (!chartElement) {
+                      const allChartCards = document.querySelectorAll('[data-chart-id]');
+                      if (allChartCards[i]) {
+                        chartElement = allChartCards[i].querySelector('.recharts-wrapper');
+                      }
                     }
+                    
+                    if (chartElement) {
+                      console.log(`[Dashboard Startup] ✅ Found chart element for ${chartId}`);
+                      // Capture chart image
+                      const canvas = await html2canvas(chartElement, {
+                        backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
+                        scale: 0.5,
+                        logging: false,
+                        useCORS: true
+                      });
+                      
+                      const imageUrl = canvas.toDataURL('image/png');
+                      const context = `${chart.title || chartId}`;
+                      
+                      console.log(`[Dashboard Startup] ✅ Captured image for ${chartId}: ${imageUrl.length} chars, context: "${context}"`);
+                      
+                      chartsForStartup.push({
+                        chartId,
+                        imageUrl,
+                        context
+                      });
+                    } else {
+                      console.error(`[Dashboard Startup] ❌ Chart element NOT FOUND for ${chartId}`);
+                    }
+                  } catch (err) {
+                    console.error(`[Dashboard Startup] ❌ Failed to capture chart ${chartId}:`, err);
                   }
-                  
-                  if (chartElement) {
-                    console.log(`[Dashboard Startup] ✅ Found chart element for ${chartId}`);
-                    // Capture chart image
-                    const canvas = await html2canvas(chartElement, {
-                      backgroundColor: document.documentElement.classList.contains('dark') ? '#1f2937' : '#ffffff',
-                      scale: 0.5,
-                      logging: false,
-                      useCORS: true
-                    });
-                    
-                    const imageUrl = canvas.toDataURL('image/png');
-                    const context = `${chart.title || chartId}`;
-                    
-                    console.log(`[Dashboard Startup] ✅ Captured image for ${chartId}: ${imageUrl.length} chars, context: "${context}"`);
-                    
-                    chartsForStartup.push({
-                      chartId,
-                      imageUrl,
-                      context
-                    });
-                  } else {
-                    console.error(`[Dashboard Startup] ❌ Chart element NOT FOUND for ${chartId}`);
-                  }
-                } catch (err) {
-                  console.error(`[Dashboard Startup] ❌ Failed to capture chart ${chartId}:`, err);
                 }
-              }
-              
-              console.log(`[Dashboard Startup] ========================================`);
-              console.log(`[Dashboard Startup] 📊 CAPTURE SUMMARY:`);
-              console.log(`[Dashboard Startup] Total charts to process: ${allChartsForTranscription.length}`);
-              console.log(`[Dashboard Startup] Successfully captured: ${chartsForStartup.length}`);
-              console.log(`[Dashboard Startup] Chart IDs captured:`, chartsForStartup.map(c => c.chartId));
-              
-              if (chartsForStartup.length > 0) {
-                console.log(`[Dashboard Startup] 📤 SENDING TO BACKEND: ${chartsForStartup.length} charts`);
-                console.log(`[Dashboard Startup] Calling /chart-transcription/startup endpoint...`);
                 
-                try {
-                  const { data } = await chartTranscriptionAPI.startup(chartsForStartup);
+                console.log(`[Dashboard Startup] ========================================`);
+                console.log(`[Dashboard Startup] 📊 CAPTURE SUMMARY:`);
+                console.log(`[Dashboard Startup] Total charts to process: ${allChartsForTranscription.length}`);
+                console.log(`[Dashboard Startup] Successfully captured: ${chartsForStartup.length}`);
+                console.log(`[Dashboard Startup] Chart IDs captured:`, chartsForStartup.map(c => c.chartId));
+                
+                if (chartsForStartup.length > 0) {
+                  console.log(`[Dashboard Startup] 📤 SENDING TO BACKEND: ${chartsForStartup.length} charts`);
+                  console.log(`[Dashboard Startup] Calling /chart-transcription/startup endpoint...`);
                   
-                  console.log(`[Dashboard Startup] ========================================`);
-                  console.log(`[Dashboard Startup] 📥 BACKEND RESPONSE RECEIVED`);
-                  console.log(`[Dashboard Startup] Full response:`, data);
-                  
-                  if (data.results) {
-                    const created = data.results.filter(r => r.status === 'created').length;
-                    const errors = data.results.filter(r => r.status === 'error').length;
-                    const skipped = data.results.filter(r => r.status === 'skip-invalid').length;
-                    console.log(`[Dashboard Startup] Results: ${created} created, ${errors} errors, ${skipped} skipped`);
+                  try {
+                    const { data } = await chartTranscriptionAPI.startup(chartsForStartup);
                     
-                    // Log each result
-                    data.results.forEach(result => {
-                      console.log(`[Dashboard Startup] Chart ${result.chartId}: ${result.status}${result.error ? ` (${result.error})` : ''}`);
-                    });
+                    console.log(`[Dashboard Startup] ========================================`);
+                    console.log(`[Dashboard Startup] 📥 BACKEND RESPONSE RECEIVED`);
+                    console.log(`[Dashboard Startup] Full response:`, data);
+                    
+                    if (data.results) {
+                      const created = data.results.filter(r => r.status === 'created').length;
+                      const errors = data.results.filter(r => r.status === 'error').length;
+                      const skipped = data.results.filter(r => r.status === 'skip-invalid').length;
+                      console.log(`[Dashboard Startup] Results: ${created} created, ${errors} errors, ${skipped} skipped`);
+                      
+                      // Log each result
+                      data.results.forEach(result => {
+                        console.log(`[Dashboard Startup] Chart ${result.chartId}: ${result.status}${result.error ? ` (${result.error})` : ''}`);
+                      });
+                    }
+                    
+                    console.log(`[Dashboard Startup] ✅✅✅ STARTUP TRANSCRIPTION COMPLETED!`);
+                    console.log(`[Dashboard Startup] ========================================`);
+                  } catch (err) {
+                    console.error(`[Dashboard Startup] ❌ Backend startup failed:`, err);
                   }
-                  
-                  console.log(`[Dashboard Startup] ✅✅✅ STARTUP TRANSCRIPTION COMPLETED!`);
-                  console.log(`[Dashboard Startup] ========================================`);
-                } catch (err) {
-                  console.error(`[Dashboard Startup] ❌ Backend startup failed:`, err);
+                } else {
+                  console.error(`[Dashboard Startup] ❌❌❌ CRITICAL: NO CHARTS WERE CAPTURED!`);
                 }
-              } else {
-                console.error(`[Dashboard Startup] ❌❌❌ CRITICAL: NO CHARTS WERE CAPTURED!`);
+              } catch (err) {
+                console.error(`[Dashboard Startup] ❌ Error in startup transcription flow:`, err);
               }
-            } catch (err) {
-              console.error(`[Dashboard Startup] ❌ Error in startup transcription flow:`, err);
-            }
-          })();
+            })();
+          }
         } else {
           console.log(`[Dashboard] ⏭️ Skipping startup transcription - already completed in this session`);
         }
