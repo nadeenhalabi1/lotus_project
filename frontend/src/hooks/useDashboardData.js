@@ -398,6 +398,18 @@ export const useDashboardData = () => {
     try {
       setRefreshing(true);
       setError(null);
+      
+      // Clear saved report from sessionStorage when refreshing data
+      // This ensures that when user clicks "Refresh Data", the report will be regenerated with new data
+      try {
+        sessionStorage.removeItem('lastGeneratedReportId');
+        sessionStorage.removeItem('lastGeneratedReportData');
+        sessionStorage.removeItem('lastGeneratedReportConclusions');
+        console.log('[Dashboard Refresh] ✅ Cleared saved report from sessionStorage - report will be regenerated with new data');
+      } catch (err) {
+        console.warn('[Dashboard Refresh] ⚠️ Failed to clear saved report from sessionStorage:', err);
+      }
+      
       const response = await dashboardAPI.refreshData(services);
       const dashboardData = response.data;
       const updatedAt = dashboardData.lastUpdated || new Date().toISOString();

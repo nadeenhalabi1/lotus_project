@@ -346,6 +346,26 @@ const ReportsPage = () => {
   const [loadingConclusions, setLoadingConclusions] = useState(false);
   const generatingRef = useRef(false); // Prevent duplicate calls
 
+  // Load saved report from sessionStorage on mount
+  useEffect(() => {
+    const savedReportId = sessionStorage.getItem('lastGeneratedReportId');
+    const savedReportData = sessionStorage.getItem('lastGeneratedReportData');
+    const savedReportConclusions = sessionStorage.getItem('lastGeneratedReportConclusions');
+    
+    if (savedReportId && savedReportData) {
+      try {
+        setSelectedReport(savedReportId);
+        setReportData(JSON.parse(savedReportData));
+        if (savedReportConclusions) {
+          setReportConclusions(JSON.parse(savedReportConclusions));
+        }
+        console.log('[Reports] ✅ Loaded saved report from sessionStorage:', savedReportId);
+      } catch (err) {
+        console.error('[Reports] ❌ Failed to load saved report:', err);
+      }
+    }
+  }, []);
+
   const handleGenerate = async (reportId) => {
     // Prevent duplicate calls (debouncing)
     if (generatingRef.current) {
@@ -367,6 +387,11 @@ const ReportsPage = () => {
       setReportData(report);
       setSelectedReport(reportId);
       
+      // Save report to sessionStorage so it persists when navigating between pages
+      sessionStorage.setItem('lastGeneratedReportId', reportId);
+      sessionStorage.setItem('lastGeneratedReportData', JSON.stringify(report));
+      console.log('[Reports] ✅ Saved report to sessionStorage:', reportId);
+      
       // ⚠️ IMPORTANT: Do NOT automatically refresh transcriptions when opening a report
       // Transcriptions are only refreshed when:
       // 1. User clicks "Refresh Data" button on Dashboard
@@ -383,7 +408,11 @@ const ReportsPage = () => {
           const report = retryResponse.data.report;
           setReportData(report);
           setSelectedReport(reportId);
-          // Continue with transcription creation...
+          
+          // Save report to sessionStorage
+          sessionStorage.setItem('lastGeneratedReportId', reportId);
+          sessionStorage.setItem('lastGeneratedReportData', JSON.stringify(report));
+          console.log('[Reports] ✅ Saved report to sessionStorage (retry):', reportId);
         } catch (retryErr) {
           setError('Too many requests. Please wait a moment and try again.');
           console.error('[Reports] Retry failed:', retryErr);
@@ -441,10 +470,14 @@ const ReportsPage = () => {
         // Call OpenAI API
         const response = await openaiAPI.generateReportConclusions(topic, chartImages);
         if (response.data.ok) {
-          setReportConclusions({
+          const conclusions = {
             source: response.data.source,
             data: response.data.data
-          });
+          };
+          setReportConclusions(conclusions);
+          
+          // Save conclusions to sessionStorage
+          sessionStorage.setItem('lastGeneratedReportConclusions', JSON.stringify(conclusions));
         }
       } catch (err) {
         console.error('Failed to generate report conclusions:', err);
