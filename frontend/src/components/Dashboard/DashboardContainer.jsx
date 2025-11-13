@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDashboardData } from '../../hooks/useDashboardData';
+import { dashboardAPI } from '../../services/api';
 import ChartGrid from './ChartGrid';
 import DashboardHeader from './DashboardHeader';
 import BOXSidebar from '../BOX/BOXSidebar';
@@ -26,6 +27,7 @@ const DashboardContainer = () => {
   } = useDashboardData();
   const [boxOpen, setBoxOpen] = useState(false);
   const [isStatusModalOpen, setStatusModalOpen] = useState(false);
+  const [allCharts, setAllCharts] = useState(null); // All charts (priority + BOX) for rendering
 
   const failedServicesMap = useMemo(() => {
     if (!refreshStatus?.failed) return {};
@@ -35,13 +37,40 @@ const DashboardContainer = () => {
     }, {});
   }, [refreshStatus]);
 
-  const priorityCharts = useMemo(() => {
-    return data?.charts?.filter((chart) => chart.metadata?.isPriority !== false) || [];
+  // Load all charts (priority + BOX) for rendering (including hidden charts for transcription)
+  useEffect(() => {
+    const loadAllCharts = async () => {
+      try {
+        const response = await dashboardAPI.getAllCharts();
+        setAllCharts(response.data?.charts || []);
+      } catch (err) {
+        console.error('[DashboardContainer] Failed to load all charts:', err);
+        // Fallback to dashboard data if available
+        setAllCharts(data?.charts || []);
+      }
+    };
+
+    if (data?.charts) {
+      loadAllCharts();
+    }
   }, [data?.charts]);
 
+  const priorityCharts = useMemo(() => {
+    return allCharts?.filter((chart) => chart.metadata?.isPriority !== false) || data?.charts?.filter((chart) => chart.metadata?.isPriority !== false) || [];
+  }, [allCharts, data?.charts]);
+
   const boxCharts = useMemo(() => {
-    return data?.charts?.filter((chart) => chart.metadata?.isPriority === false) || [];
-  }, [data?.charts]);
+    return allCharts?.filter((chart) => chart.metadata?.isPriority === false) || [];
+  }, [allCharts]);
+
+  // All non-priority charts (BOX + any other charts) for hidden rendering
+  // These are rendered off-screen so they can be captured for transcription
+  const hiddenCharts = useMemo(() => {
+    if (!allCharts) return [];
+    // Include all charts that are explicitly marked as non-priority (isPriority === false)
+    // This includes BOX charts and any other non-priority charts
+    return allCharts.filter((chart) => chart.metadata?.isPriority === false);
+  }, [allCharts]);
 
   const handleChartClick = (chart) => {
     if (!chart || !chart.id) return;
@@ -153,8 +182,8 @@ const DashboardContainer = () => {
         />
       </div>
 
-      {/* Hidden container to render BOX charts for transcription capture */}
-      {boxCharts.length > 0 && (
+      {/* Hidden container to render ALL non-priority charts (BOX + others) for transcription capture */}
+      {hiddenCharts.length > 0 && (
         <div
           aria-hidden="true"
           style={{
@@ -167,7 +196,7 @@ const DashboardContainer = () => {
           }}
         >
           <ChartGrid
-            charts={boxCharts}
+            charts={hiddenCharts}
             onChartClick={() => {}}
             failedServices={failedServicesMap}
           />

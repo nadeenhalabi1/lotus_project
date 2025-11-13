@@ -15,6 +15,7 @@ const boxController = new BoxController();
 
 // Dashboard routes
 router.get('/', dashboardController.getDashboard.bind(dashboardController));
+router.get('/all-charts', dashboardController.getAllCharts.bind(dashboardController)); // All charts for transcription
 router.post('/refresh', dashboardController.refreshData.bind(dashboardController));
 router.get('/chart/:chartId', dashboardController.getChart.bind(dashboardController));
 router.post('/chart/:chartId/refresh', dashboardController.refreshChart.bind(dashboardController));

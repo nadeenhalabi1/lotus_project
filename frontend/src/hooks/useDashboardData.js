@@ -131,10 +131,22 @@ export const useDashboardData = () => {
           lastUpdated: updatedAt,
         });
         
-        // ⚠️ CRITICAL: On startup, send all charts to OpenAI for transcription
-        // Wait for charts to render first, then capture and send to backend
-        console.log(`[Dashboard] ✅ Dashboard loaded with ${dashboardData.charts?.length || 0} charts`);
-        console.log(`[Dashboard] 🚀 Starting startup transcription flow...`);
+        // ⚠️ CRITICAL: On startup, send ALL charts (not just priority) to OpenAI for transcription
+        // Fetch all charts from backend to ensure we capture everything
+        console.log(`[Dashboard] ✅ Dashboard loaded with ${dashboardData.charts?.length || 0} priority charts`);
+        console.log(`[Dashboard] 🚀 Starting startup transcription flow for ALL charts...`);
+        
+        // Fetch ALL charts (priority + BOX + combined analytics) for transcription
+        let allChartsForTranscription = [];
+        try {
+          const allChartsResponse = await dashboardAPI.getAllCharts();
+          allChartsForTranscription = allChartsResponse.data?.charts || [];
+          console.log(`[Dashboard Startup] 📊 Fetched ${allChartsForTranscription.length} total charts for transcription`);
+          console.log(`[Dashboard Startup] Chart IDs:`, allChartsForTranscription.map(c => c.id));
+        } catch (err) {
+          console.error(`[Dashboard Startup] ❌ Failed to fetch all charts, falling back to dashboard charts:`, err);
+          allChartsForTranscription = dashboardData.charts || [];
+        }
         
         // Wait for charts to render, then capture and send to OpenAI
         const waitForChartsStartup = async (maxAttempts = 20, delayMs = 500) => {
@@ -168,18 +180,18 @@ export const useDashboardData = () => {
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         // Capture all chart images and send to startup endpoint
-        if (dashboardData.charts && dashboardData.charts.length > 0) {
+        if (allChartsForTranscription && allChartsForTranscription.length > 0) {
           (async () => {
             try {
               console.log(`[Dashboard Startup] ========================================`);
               console.log(`[Dashboard Startup] 🚀 STARTING STARTUP TRANSCRIPTION FLOW`);
-              console.log(`[Dashboard Startup] Total charts in dashboardData: ${dashboardData.charts.length}`);
-              console.log(`[Dashboard Startup] Chart IDs:`, dashboardData.charts.map(c => c.id));
+              console.log(`[Dashboard Startup] Total charts to process: ${allChartsForTranscription.length}`);
+              console.log(`[Dashboard Startup] Chart IDs:`, allChartsForTranscription.map(c => c.id));
               
               // Capture all chart images
               const chartsForStartup = [];
-              for (let i = 0; i < dashboardData.charts.length; i++) {
-                const chart = dashboardData.charts[i];
+              for (let i = 0; i < allChartsForTranscription.length; i++) {
+                const chart = allChartsForTranscription[i];
                 const chartId = chart.id || `chart-${i}`;
                 
                 try {
@@ -232,7 +244,7 @@ export const useDashboardData = () => {
               
               console.log(`[Dashboard Startup] ========================================`);
               console.log(`[Dashboard Startup] 📊 CAPTURE SUMMARY:`);
-              console.log(`[Dashboard Startup] Total charts in data: ${dashboardData.charts.length}`);
+              console.log(`[Dashboard Startup] Total charts to process: ${allChartsForTranscription.length}`);
               console.log(`[Dashboard Startup] Successfully captured: ${chartsForStartup.length}`);
               console.log(`[Dashboard Startup] Chart IDs captured:`, chartsForStartup.map(c => c.chartId));
               
@@ -338,7 +350,22 @@ export const useDashboardData = () => {
         lastUpdated: updatedAt,
       });
 
-      // After data refresh, refresh all chart transcriptions with OpenAI
+      // After data refresh, refresh ALL chart transcriptions (not just priority) with OpenAI
+      // Fetch all charts from backend to ensure we capture everything
+      console.log(`[Dashboard Refresh] 📊 Refreshing transcriptions for ALL charts...`);
+      
+      // Fetch ALL charts (priority + BOX + combined analytics) for transcription
+      let allChartsForTranscription = [];
+      try {
+        const allChartsResponse = await dashboardAPI.getAllCharts();
+        allChartsForTranscription = allChartsResponse.data?.charts || [];
+        console.log(`[Dashboard Refresh] 📊 Fetched ${allChartsForTranscription.length} total charts for transcription`);
+        console.log(`[Dashboard Refresh] Chart IDs:`, allChartsForTranscription.map(c => c.id));
+      } catch (err) {
+        console.error(`[Dashboard Refresh] ❌ Failed to fetch all charts, falling back to dashboard charts:`, err);
+        allChartsForTranscription = dashboardData.charts || [];
+      }
+      
       // Wait for charts to render first - CRITICAL: Recharts needs time to render
       // Use longer delay and wait for actual chart elements to appear
       const waitForCharts = async (maxAttempts = 20, delayMs = 500) => {
@@ -372,19 +399,19 @@ export const useDashboardData = () => {
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       setTimeout(async () => {
-        if (dashboardData.charts && dashboardData.charts.length > 0) {
+        if (allChartsForTranscription && allChartsForTranscription.length > 0) {
           try {
             console.log(`[Dashboard Refresh] ========================================`);
             console.log(`[Dashboard Refresh] 🚀 STARTING REFRESH FLOW`);
-            console.log(`[Dashboard Refresh] Total charts in dashboardData: ${dashboardData.charts.length}`);
-            console.log(`[Dashboard Refresh] Chart IDs:`, dashboardData.charts.map(c => c.id));
+            console.log(`[Dashboard Refresh] Total charts to process: ${allChartsForTranscription.length}`);
+            console.log(`[Dashboard Refresh] Chart IDs:`, allChartsForTranscription.map(c => c.id));
             console.log(`[Dashboard Refresh] DOM elements with [data-chart-id]:`, document.querySelectorAll('[data-chart-id]').length);
             console.log(`[Dashboard Refresh] DOM elements with .recharts-wrapper:`, document.querySelectorAll('.recharts-wrapper').length);
             
             // Capture all chart images
             const chartsForRefresh = [];
-            for (let i = 0; i < dashboardData.charts.length; i++) {
-              const chart = dashboardData.charts[i];
+            for (let i = 0; i < allChartsForTranscription.length; i++) {
+              const chart = allChartsForTranscription[i];
               const chartId = chart.id || `chart-${i}`;
               
               // ✅ STEP 4: LOG CHART ID CONSISTENCY
@@ -447,7 +474,7 @@ export const useDashboardData = () => {
             
             console.log(`[Dashboard Refresh] ========================================`);
             console.log(`[Dashboard Refresh] 📊 CAPTURE SUMMARY:`);
-            console.log(`[Dashboard Refresh] Total charts in data: ${dashboardData.charts.length}`);
+            console.log(`[Dashboard Refresh] Total charts to process: ${allChartsForTranscription.length}`);
             console.log(`[Dashboard Refresh] Successfully captured: ${chartsForRefresh.length}`);
             console.log(`[Dashboard Refresh] Chart IDs captured:`, chartsForRefresh.map(c => c.chartId));
             

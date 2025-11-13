@@ -123,6 +123,7 @@ api.interceptors.response.use(
 // Dashboard API
 export const dashboardAPI = {
   getDashboard: () => api.get('/dashboard'),
+  getAllCharts: () => api.get('/dashboard/all-charts'), // All charts (priority + BOX) for transcription
   refreshData: (services) => api.post('/dashboard/refresh', services?.length ? { services } : {}),
 };
 

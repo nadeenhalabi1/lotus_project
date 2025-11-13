@@ -10,6 +10,31 @@ export class DashboardController {
     this.getCombinedAnalyticsUseCase = new GetCombinedAnalyticsUseCase(this.cacheRepository);
   }
 
+  /**
+   * Get all charts (both priority and non-priority)
+   * Used for transcription purposes - ensures all charts are sent to OpenAI
+   */
+  async getAllCharts(req, res, next) {
+    try {
+      const dashboardData = await this.getDashboardUseCase.execute();
+      const combinedAnalytics = await this.getCombinedAnalyticsUseCase.execute();
+      
+      // Merge regular charts with combined analytics charts
+      const allCharts = [
+        ...dashboardData.charts,
+        ...combinedAnalytics.charts
+      ];
+
+      res.json({
+        charts: allCharts,
+        lastUpdated: dashboardData.lastUpdated
+      });
+    } catch (error) {
+      console.error('GetAllCharts error:', error);
+      next(error);
+    }
+  }
+
   async getDashboard(req, res, next) {
     try {
       const dashboardData = await this.getDashboardUseCase.execute();
