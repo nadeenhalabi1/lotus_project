@@ -285,6 +285,204 @@ router.post('/chart-transcription/startup', async (req, res) => {
 });
 
 /**
+ * ⚠️ CRITICAL: /refresh route MUST come BEFORE /:chartId route
+ * Otherwise Express will match /refresh as :chartId = "refresh"
+ */
+
+/**
+ * POST /api/v1/ai/chart-transcription/refresh
+ * New workflow: Always overwrite transcriptions when data changes
+ * body: { charts: [{ chartId, imageUrl, context? }] }
+ * 
+ * - Processes charts sequentially (one at a time) to prevent OpenAI rate limits
+ * - Always calls OpenAI and overwrites existing transcription
+ * - Each chart: OpenAI call → Save to DB (overwrite) → Wait → Next chart
+ */
+router.post('/chart-transcription/refresh', async (req, res) => {
+  console.log(`[refresh] ========================================`);
+  console.log(`[refresh] 📥 RECEIVED /chart-transcription/refresh REQUEST`);
+  console.log(`[refresh] Request method:`, req.method);
+  console.log(`[refresh] Request headers content-type:`, req.headers['content-type']);
+  console.log(`[refresh] Request headers content-length:`, req.headers['content-length']);
+  console.log(`[refresh] Request body type:`, typeof req.body);
+  console.log(`[refresh] Request body is null:`, req.body === null);
+  console.log(`[refresh] Request body is undefined:`, req.body === undefined);
+  console.log(`[refresh] Request body keys:`, req.body ? Object.keys(req.body) : 'N/A');
+  
+  // Check if body exists at all
+  if (!req.body) {
+    console.error(`[refresh] ❌ ERROR: Request body is null or undefined`);
+    console.error(`[refresh] This might indicate a body parsing issue or request too large`);
+    return res.status(400).json({ 
+      ok: false, 
+      error: 'Request body is required',
+      hint: 'Check if request body size exceeds limit or JSON parsing failed'
+    });
+  }
+  
+  const { charts } = req.body;
+  
+  console.log(`[refresh] charts type:`, typeof charts);
+  console.log(`[refresh] charts isArray:`, Array.isArray(charts));
+  console.log(`[refresh] charts length:`, charts?.length);
+  console.log(`[refresh] charts value:`, charts);
+  
+  // Log first chart structure if available
+  if (Array.isArray(charts) && charts.length > 0) {
+    console.log(`[refresh] First chart keys:`, Object.keys(charts[0] || {}));
+    console.log(`[refresh] First chart structure:`, {
+      hasChartId: !!charts[0]?.chartId,
+      hasImageUrl: !!charts[0]?.imageUrl,
+      hasContext: !!charts[0]?.context,
+      chartIdType: typeof charts[0]?.chartId,
+      imageUrlType: typeof charts[0]?.imageUrl,
+      imageUrlLength: charts[0]?.imageUrl?.length
+    });
+  }
+  
+  if (!Array.isArray(charts)) {
+    console.error(`[refresh] ❌ ERROR: charts is not an array`);
+    console.error(`[refresh] charts value:`, charts);
+    console.error(`[refresh] charts type:`, typeof charts);
+    return res.status(400).json({ 
+      ok: false, 
+      error: 'charts[] required and must be an array',
+      received: typeof charts,
+      bodyKeys: Object.keys(req.body)
+    });
+  }
+  
+  if (charts.length === 0) {
+    console.error(`[refresh] ❌ ERROR: charts array is empty`);
+    return res.status(400).json({ 
+      ok: false, 
+      error: 'charts[] must not be empty' 
+    });
+  }
+
+  console.log(`[refresh] 🚀 Processing ${charts.length} charts sequentially (always overwrite)...`);
+  console.log(`[refresh] Chart IDs received:`, charts.map(c => c?.chartId));
+  
+  const results = [];
+
+  // Process charts sequentially (one at a time)
+  for (let i = 0; i < charts.length; i++) {
+    const c = charts[i];
+    
+    console.log(`[refresh] ========================================`);
+    console.log(`[refresh] Processing chart ${i + 1}/${charts.length}`);
+    console.log(`[refresh] Chart object:`, {
+      chartId: c?.chartId,
+      hasImageUrl: !!c?.imageUrl,
+      imageUrlLength: c?.imageUrl?.length,
+      context: c?.context
+    });
+    
+    if (!c?.chartId || !c?.imageUrl) {
+      console.error(`[refresh] ❌ SKIPPING: Invalid chart (missing chartId or imageUrl)`);
+      results.push({ chartId: c?.chartId || 'unknown', status: 'skip-invalid' });
+      continue;
+    }
+
+    const { chartId, imageUrl, context } = c;
+
+    try {
+      // Add delay between charts (except first)
+      if (i > 0) {
+        console.log(`[refresh] ⏳ Waiting 800ms before next chart...`);
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+
+      // Always call OpenAI to get new transcription
+      console.log(`[refresh] Chart ${chartId}: 📞 Calling OpenAI Vision API...`);
+      console.log(`[refresh] Chart ${chartId}: Image size: ${imageUrl.length} chars`);
+      console.log(`[refresh] Chart ${chartId}: Context: "${context}"`);
+      
+      const text = await openaiQueue.enqueue(async () => {
+        return await transcribeChartImage({ imageUrl, context });
+      });
+
+      console.log(`[refresh] Chart ${chartId}: ✅ OpenAI returned text`);
+      console.log(`[refresh] Chart ${chartId}: Text length: ${text?.length || 0} chars`);
+      console.log(`[refresh] Chart ${chartId}: Text preview: ${text?.substring(0, 100)}...`);
+
+      if (!text || !text.trim()) {
+        console.error(`[refresh] Chart ${chartId}: ❌ ERROR - OpenAI returned empty transcription`);
+        results.push({ chartId, status: 'error', error: 'OpenAI returned empty transcription' });
+        continue;
+      }
+
+      // Save to DB (always overwrite) and VERIFY
+      console.log(`[refresh] Chart ${chartId}: 💾💾💾 CALLING upsertTranscriptionSimple...`);
+      console.log(`[refresh] Chart ${chartId}: Parameters: chartId="${chartId}", textLength=${text.length}`);
+      console.log(`[refresh] Chart ${chartId}: DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
+      
+      let savedData;
+      try {
+        savedData = await upsertTranscriptionSimple({ chartId, text });
+        console.log(`[refresh] Chart ${chartId}: ✅ upsertTranscriptionSimple returned successfully`);
+      } catch (saveErr) {
+        console.error(`[refresh] Chart ${chartId}: ❌❌❌ CRITICAL: upsertTranscriptionSimple FAILED!`);
+        console.error(`[refresh] Chart ${chartId}: Error message: ${saveErr.message}`);
+        console.error(`[refresh] Chart ${chartId}: Error stack: ${saveErr.stack}`);
+        throw saveErr; // Re-throw to be caught by outer catch
+      }
+      
+      console.log(`[refresh] Chart ${chartId}: ✅✅✅ DB WRITE VERIFIED!`);
+      console.log(`[refresh] Chart ${chartId}: Verified chartId: ${savedData.chartId}`);
+      console.log(`[refresh] Chart ${chartId}: Verified text length: ${savedData.transcriptionText?.length}`);
+      console.log(`[refresh] Chart ${chartId}: Verified updated_at: ${savedData.updatedAt}`);
+      
+      results.push({ 
+        chartId, 
+        status: 'updated',
+        verified: true,
+        textLength: savedData.transcriptionText?.length,
+        updatedAt: savedData.updatedAt
+      });
+    } catch (err) {
+      console.error(`[refresh] Chart ${chartId}: ❌ ERROR:`, {
+        message: err.message,
+        stack: err.stack
+      });
+      results.push({ chartId, status: 'error', error: err.message });
+    }
+  }
+
+  console.log(`[refresh] ========================================`);
+  console.log(`[refresh] 📊 FINAL RESULTS:`);
+  console.log(`[refresh] Total received: ${charts.length}`);
+  console.log(`[refresh] Total processed: ${results.length}`);
+  console.log(`[refresh] Updated: ${results.filter(r => r.status === 'updated').length}`);
+  console.log(`[refresh] Errors: ${results.filter(r => r.status === 'error').length}`);
+  console.log(`[refresh] Skipped: ${results.filter(r => r.status === 'skip-invalid').length}`);
+  console.log(`[refresh] ========================================`);
+
+  const processedCount = results.filter(r => r.status === 'updated').length;
+  const errorCount = results.filter(r => r.status === 'error').length;
+  const skippedCount = results.filter(r => r.status === 'skip-invalid').length;
+  const errors = results
+    .filter(r => r.status === 'error' || r.status === 'skip-invalid')
+    .map(r => ({ chartId: r.chartId, reason: r.error || 'Invalid chart data' }));
+
+  // Determine status
+  let status = 'ok';
+  if (errorCount > 0 || skippedCount > 0) {
+    status = processedCount > 0 ? 'partial' : 'error';
+  }
+
+  // Always return 200 unless there's a critical issue (which would have returned 400 earlier)
+  res.status(200).json({
+    status,
+    totalChartsReceived: charts.length,
+    processedCharts: processedCount,
+    skippedCharts: skippedCount,
+    errors: errors.length > 0 ? errors : [],
+    results // Include detailed results for debugging
+  });
+});
+
+/**
  * POST /api/v1/ai/chart-transcription/:chartId
  * Get-or-create / Update: Checks signature - if changed, calls OpenAI and updates DB.
  * body: { topic?: string, chartData?: any, imageUrl: string, model?: string }
@@ -674,200 +872,7 @@ router.post('/chart-transcription/startup-fill', async (req, res) => {
 });
 
 /**
- * POST /api/v1/ai/chart-transcription/refresh
- * New workflow: Always overwrite transcriptions when data changes
- * body: { charts: [{ chartId, imageUrl, context? }] }
- * 
- * - Processes charts sequentially (one at a time) to prevent OpenAI rate limits
- * - Always calls OpenAI and overwrites existing transcription
- * - Each chart: OpenAI call → Save to DB (overwrite) → Wait → Next chart
- */
-router.post('/chart-transcription/refresh', async (req, res) => {
-  console.log(`[refresh] ========================================`);
-  console.log(`[refresh] 📥 RECEIVED /chart-transcription/refresh REQUEST`);
-  console.log(`[refresh] Request method:`, req.method);
-  console.log(`[refresh] Request headers content-type:`, req.headers['content-type']);
-  console.log(`[refresh] Request headers content-length:`, req.headers['content-length']);
-  console.log(`[refresh] Request body type:`, typeof req.body);
-  console.log(`[refresh] Request body is null:`, req.body === null);
-  console.log(`[refresh] Request body is undefined:`, req.body === undefined);
-  console.log(`[refresh] Request body keys:`, req.body ? Object.keys(req.body) : 'N/A');
-  
-  // Check if body exists at all
-  if (!req.body) {
-    console.error(`[refresh] ❌ ERROR: Request body is null or undefined`);
-    console.error(`[refresh] This might indicate a body parsing issue or request too large`);
-    return res.status(400).json({ 
-      ok: false, 
-      error: 'Request body is required',
-      hint: 'Check if request body size exceeds limit or JSON parsing failed'
-    });
-  }
-  
-  const { charts } = req.body;
-  
-  console.log(`[refresh] charts type:`, typeof charts);
-  console.log(`[refresh] charts isArray:`, Array.isArray(charts));
-  console.log(`[refresh] charts length:`, charts?.length);
-  console.log(`[refresh] charts value:`, charts);
-  
-  // Log first chart structure if available
-  if (Array.isArray(charts) && charts.length > 0) {
-    console.log(`[refresh] First chart keys:`, Object.keys(charts[0] || {}));
-    console.log(`[refresh] First chart structure:`, {
-      hasChartId: !!charts[0]?.chartId,
-      hasImageUrl: !!charts[0]?.imageUrl,
-      hasContext: !!charts[0]?.context,
-      chartIdType: typeof charts[0]?.chartId,
-      imageUrlType: typeof charts[0]?.imageUrl,
-      imageUrlLength: charts[0]?.imageUrl?.length
-    });
-  }
-  
-  if (!Array.isArray(charts)) {
-    console.error(`[refresh] ❌ ERROR: charts is not an array`);
-    console.error(`[refresh] charts value:`, charts);
-    console.error(`[refresh] charts type:`, typeof charts);
-    return res.status(400).json({ 
-      ok: false, 
-      error: 'charts[] required and must be an array',
-      received: typeof charts,
-      bodyKeys: Object.keys(req.body)
-    });
-  }
-  
-  if (charts.length === 0) {
-    console.error(`[refresh] ❌ ERROR: charts array is empty`);
-    return res.status(400).json({ 
-      ok: false, 
-      error: 'charts[] must not be empty' 
-    });
-  }
-
-  console.log(`[refresh] 🚀 Processing ${charts.length} charts sequentially (always overwrite)...`);
-  console.log(`[refresh] Chart IDs received:`, charts.map(c => c?.chartId));
-  
-  const results = [];
-
-  // Process charts sequentially (one at a time)
-  for (let i = 0; i < charts.length; i++) {
-    const c = charts[i];
-    
-    console.log(`[refresh] ========================================`);
-    console.log(`[refresh] Processing chart ${i + 1}/${charts.length}`);
-    console.log(`[refresh] Chart object:`, {
-      chartId: c?.chartId,
-      hasImageUrl: !!c?.imageUrl,
-      imageUrlLength: c?.imageUrl?.length,
-      context: c?.context
-    });
-    
-    if (!c?.chartId || !c?.imageUrl) {
-      console.error(`[refresh] ❌ SKIPPING: Invalid chart (missing chartId or imageUrl)`);
-      results.push({ chartId: c?.chartId || 'unknown', status: 'skip-invalid' });
-      continue;
-    }
-
-    const { chartId, imageUrl, context } = c;
-
-    try {
-      // Add delay between charts (except first)
-      if (i > 0) {
-        console.log(`[refresh] ⏳ Waiting 800ms before next chart...`);
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
-
-      // Always call OpenAI to get new transcription
-      console.log(`[refresh] Chart ${chartId}: 📞 Calling OpenAI Vision API...`);
-      console.log(`[refresh] Chart ${chartId}: Image size: ${imageUrl.length} chars`);
-      console.log(`[refresh] Chart ${chartId}: Context: "${context}"`);
-      
-      const text = await openaiQueue.enqueue(async () => {
-        return await transcribeChartImage({ imageUrl, context });
-      });
-
-      console.log(`[refresh] Chart ${chartId}: ✅ OpenAI returned text`);
-      console.log(`[refresh] Chart ${chartId}: Text length: ${text?.length || 0} chars`);
-      console.log(`[refresh] Chart ${chartId}: Text preview: ${text?.substring(0, 100)}...`);
-
-      if (!text || !text.trim()) {
-        console.error(`[refresh] Chart ${chartId}: ❌ ERROR - OpenAI returned empty transcription`);
-        results.push({ chartId, status: 'error', error: 'OpenAI returned empty transcription' });
-        continue;
-      }
-
-      // Save to DB (always overwrite) and VERIFY
-      console.log(`[refresh] Chart ${chartId}: 💾💾💾 CALLING upsertTranscriptionSimple...`);
-      console.log(`[refresh] Chart ${chartId}: Parameters: chartId="${chartId}", textLength=${text.length}`);
-      console.log(`[refresh] Chart ${chartId}: DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
-      
-      let savedData;
-      try {
-        savedData = await upsertTranscriptionSimple({ chartId, text });
-        console.log(`[refresh] Chart ${chartId}: ✅ upsertTranscriptionSimple returned successfully`);
-      } catch (saveErr) {
-        console.error(`[refresh] Chart ${chartId}: ❌❌❌ CRITICAL: upsertTranscriptionSimple FAILED!`);
-        console.error(`[refresh] Chart ${chartId}: Error message: ${saveErr.message}`);
-        console.error(`[refresh] Chart ${chartId}: Error stack: ${saveErr.stack}`);
-        throw saveErr; // Re-throw to be caught by outer catch
-      }
-      
-      console.log(`[refresh] Chart ${chartId}: ✅✅✅ DB WRITE VERIFIED!`);
-      console.log(`[refresh] Chart ${chartId}: Verified chartId: ${savedData.chartId}`);
-      console.log(`[refresh] Chart ${chartId}: Verified text length: ${savedData.transcriptionText?.length}`);
-      console.log(`[refresh] Chart ${chartId}: Verified updated_at: ${savedData.updatedAt}`);
-      
-      results.push({ 
-        chartId, 
-        status: 'updated',
-        verified: true,
-        textLength: savedData.transcriptionText?.length,
-        updatedAt: savedData.updatedAt
-      });
-    } catch (err) {
-      console.error(`[refresh] Chart ${chartId}: ❌ ERROR:`, {
-        message: err.message,
-        stack: err.stack
-      });
-      results.push({ chartId, status: 'error', error: err.message });
-    }
-  }
-
-  console.log(`[refresh] ========================================`);
-  console.log(`[refresh] 📊 FINAL RESULTS:`);
-  console.log(`[refresh] Total received: ${charts.length}`);
-  console.log(`[refresh] Total processed: ${results.length}`);
-  console.log(`[refresh] Updated: ${results.filter(r => r.status === 'updated').length}`);
-  console.log(`[refresh] Errors: ${results.filter(r => r.status === 'error').length}`);
-  console.log(`[refresh] Skipped: ${results.filter(r => r.status === 'skip-invalid').length}`);
-  console.log(`[refresh] ========================================`);
-
-  const processedCount = results.filter(r => r.status === 'updated').length;
-  const errorCount = results.filter(r => r.status === 'error').length;
-  const skippedCount = results.filter(r => r.status === 'skip-invalid').length;
-  const errors = results
-    .filter(r => r.status === 'error' || r.status === 'skip-invalid')
-    .map(r => ({ chartId: r.chartId, reason: r.error || 'Invalid chart data' }));
-
-  // Determine status
-  let status = 'ok';
-  if (errorCount > 0 || skippedCount > 0) {
-    status = processedCount > 0 ? 'partial' : 'error';
-  }
-
-  // Always return 200 unless there's a critical issue (which would have returned 400 earlier)
-  res.status(200).json({
-    status,
-    totalChartsReceived: charts.length,
-    processedCharts: processedCount,
-    skippedCharts: skippedCount,
-    errors: errors.length > 0 ? errors : [],
-    results // Include detailed results for debugging
-  });
-});
-
-/**
- * POST /api/v1/ai/chart-transcription/refresh (legacy - kept for compatibility)
+ * POST /api/v1/ai/chart-transcription/refresh-legacy (legacy - kept for compatibility)
  * Refresh flow: Checks if data changed (by signature), only calls OpenAI if data changed
  * body: { chartId: string, topic?: string, chartData: any, imageUrl: string, force?: boolean }
  * 

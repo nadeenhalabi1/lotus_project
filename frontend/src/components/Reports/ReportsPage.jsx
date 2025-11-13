@@ -429,87 +429,11 @@ const ReportsPage = () => {
       setReportData(report);
       setSelectedReport(reportId);
       
-      // After report is generated, wait for charts to render and create transcriptions for charts that don't have them
-      // This ensures ALL charts have transcriptions
-      setTimeout(async () => {
-        if (report.charts && report.charts.length > 0) {
-          try {
-            // Wait for charts to render
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            
-            // Prepare charts array for refresh (always re-generate transcriptions)
-            const chartsForRefresh = [];
-            
-            for (let i = 0; i < report.charts.length; i++) {
-              const chart = report.charts[i];
-              const initialChartId = chart.id || `chart-${i}`;
-              let chartId = initialChartId;
-
-              try {
-                let chartElement = document.querySelector(`[data-chart-id="${initialChartId}"] [data-chart-only="true"]`);
-
-                if (!chartElement) {
-                  const allChartCards = document.querySelectorAll('[data-chart-id]');
-                  if (allChartCards[i]) {
-                    const fallbackChartId = allChartCards[i].getAttribute('data-chart-id');
-                    chartElement = allChartCards[i].querySelector('[data-chart-only="true"]');
-                    if (fallbackChartId) {
-                      console.warn(`[Reports] ⚠️ ChartId mismatch. Expected "${initialChartId}", found "${fallbackChartId}". Using fallback.`);
-                      chartId = fallbackChartId;
-                    }
-                  }
-                }
-
-                if (!chartElement) {
-                  console.warn(`[Reports] ❌ Chart element not found for ${initialChartId}, skipping capture.`);
-                  continue;
-                }
-
-                const canvas = await html2canvas(chartElement, {
-                  backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
-                  scale: 1,
-                  logging: false,
-                  useCORS: true
-                });
-
-                const imageUrl = canvas.toDataURL('image/png');
-                const context = `${report.executiveSummary?.title || reportId} - ${chart.title || chartId}`;
-
-                chartsForRefresh.push({
-                  chartId,
-                  imageUrl,
-                  context
-                });
-
-                console.log(`[Reports] ✅ Prepared chart ${chartId} for refresh (image length: ${imageUrl.length})`);
-              } catch (captureErr) {
-                console.error(`[Reports] ❌ Failed to capture chart ${chartId}:`, captureErr);
-              }
-            }
-
-            if (chartsForRefresh.length > 0) {
-              try {
-                console.log(`[Reports] 📤 Sending ${chartsForRefresh.length} report charts to /chart-transcription/refresh`);
-                const refreshKey = `report-refresh-${reportId}-${Date.now()}`;
-                const response = await apiQueue.enqueue(refreshKey, () => chartTranscriptionAPI.refresh(chartsForRefresh));
-
-                console.log(`[Reports] ✅ Report charts refresh completed:`, response.data);
-
-                setTimeout(() => {
-                  window.dispatchEvent(new CustomEvent('reportTranscriptionsRefreshed'));
-                }, 8000);
-              } catch (refreshErr) {
-                console.error(`[Reports] ❌ Failed to refresh report chart transcriptions:`, refreshErr);
-              }
-            } else {
-              console.log(`[Reports] ⚠️ No report charts were captured for refresh.`);
-            }
-          } catch (err) {
-            console.error('[Reports] Failed to create transcriptions:', err);
-            // Don't fail the report generation if transcription creation fails
-          }
-        }
-      }, 100);
+      // ⚠️ IMPORTANT: Do NOT automatically refresh transcriptions when opening a report
+      // Transcriptions are only refreshed when:
+      // 1. User clicks "Refresh Data" button on Dashboard
+      // 2. User first loads the Dashboard (startup flow)
+      // Reports should display existing transcriptions from DB without calling OpenAI
     } catch (err) {
       // Handle 429 errors with retry logic
       if (err.response?.status === 429) {
