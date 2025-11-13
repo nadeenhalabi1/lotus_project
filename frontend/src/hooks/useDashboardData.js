@@ -429,6 +429,12 @@ export const useDashboardData = () => {
         lastUpdated: updatedAt,
       });
 
+      // ⚠️ CRITICAL: Wait for React to update the DOM with new data before capturing charts
+      // React needs time to re-render components with new data, and Recharts needs time to update the charts
+      // We need to wait longer to ensure the charts on screen show the NEW data, not the old data
+      console.log(`[Dashboard Refresh] ⏳ Waiting for React to update charts with new data...`);
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds for React/Recharts to update
+
       // After data refresh, refresh ALL chart transcriptions (not just priority) with OpenAI
       // Fetch all charts from backend to ensure we capture everything
       console.log(`[Dashboard Refresh] 📊 Refreshing transcriptions for ALL charts...`);
@@ -474,8 +480,9 @@ export const useDashboardData = () => {
         return;
       }
       
-      // Additional delay to ensure Recharts is fully rendered (including hidden BOX charts)
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Increased to 2 seconds to ensure hidden charts render
+      // Additional delay to ensure Recharts is fully rendered with NEW data (including hidden BOX charts)
+      console.log(`[Dashboard Refresh] ⏳ Additional wait to ensure charts show NEW data...`);
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Increased to 3 seconds to ensure charts show new data
       
       // Verify that we have enough chart elements in DOM (should match allChartsForTranscription.length)
       const allChartElements = document.querySelectorAll('[data-chart-id]');
