@@ -326,13 +326,42 @@ export async function upsertTranscriptionSimple({ chartId, text }) {
          updated_at = NOW()
        RETURNING chart_id, transcription_text, updated_at`;
     
+    // 🔍 CRITICAL: Test table exists before attempting write
+    try {
+      console.log(`[DB] 🔍 Testing table existence...`);
+      const tableCheck = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_schema = 'public' 
+          AND table_name = 'ai_chart_transcriptions'
+        );
+      `);
+      const tableExists = tableCheck.rows[0]?.exists === true;
+      console.log(`[DB] Table exists: ${tableExists}`);
+      if (!tableExists) {
+        throw new Error('Table public.ai_chart_transcriptions does not exist! Run migration first.');
+      }
+    } catch (tableErr) {
+      console.error(`[DB] ❌❌❌ TABLE CHECK FAILED:`, tableErr.message);
+      throw new Error(`Table check failed: ${tableErr.message}`);
+    }
+    
     console.log(`[DB] 🔍 Executing query with ${4} parameters...`);
     console.log(`[DB] Query: ${query.substring(0, 200)}...`);
     
     const result = await withRetry(async () => {
       console.log(`[DB] 🔍 Calling pool.query()...`);
+      const startTime = Date.now();
       const queryResult = await pool.query(query, [safeChartId, safeSignature, safeModel, safeText]);
-      console.log(`[DB] 🔍 Query executed, rows returned: ${queryResult?.rows?.length || 0}`);
+      const duration = Date.now() - startTime;
+      console.log(`[DB] 🔍 Query executed in ${duration}ms, rows returned: ${queryResult?.rows?.length || 0}`);
+      if (queryResult?.rows?.length > 0) {
+        console.log(`[DB] 🔍 First row preview:`, {
+          chart_id: queryResult.rows[0].chart_id,
+          text_length: queryResult.rows[0].transcription_text?.length,
+          updated_at: queryResult.rows[0].updated_at
+        });
+      }
       return queryResult;
     }, 3);
     
