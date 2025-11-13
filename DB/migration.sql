@@ -118,6 +118,105 @@ create table if not exists public.learning_analytics_cache (
   primary key (snapshot_date, period, start_date, end_date)
 );
 
+-- Migrate existing learning_analytics_cache table to new schema
+do $$
+begin
+  -- Check if table exists and has old schema (has metrics column but not version)
+  if exists (
+    select 1 from information_schema.columns 
+    where table_schema = 'public' 
+    and table_name = 'learning_analytics_cache' 
+    and column_name = 'metrics'
+  ) and not exists (
+    select 1 from information_schema.columns 
+    where table_schema = 'public' 
+    and table_name = 'learning_analytics_cache' 
+    and column_name = 'version'
+  ) then
+    -- Add version column (first as nullable, then set values, then make NOT NULL)
+    alter table public.learning_analytics_cache 
+    add column if not exists version text;
+    
+    -- Set default value for existing rows
+    update public.learning_analytics_cache 
+    set version = '1.0' 
+    where version is null;
+    
+    -- Now make it NOT NULL
+    alter table public.learning_analytics_cache 
+    alter column version set not null,
+    alter column version set default '1.0';
+    
+    -- Add all new metric columns
+    alter table public.learning_analytics_cache 
+    add column if not exists total_learners int,
+    add column if not exists active_learners int,
+    add column if not exists total_courses int,
+    add column if not exists courses_completed int,
+    add column if not exists average_completion_rate numeric(5,2),
+    add column if not exists total_skills_acquired int,
+    add column if not exists average_competency_level_progression numeric(5,2),
+    add column if not exists engagement_score_average numeric(5,2),
+    add column if not exists drop_off_rate numeric(5,2),
+    add column if not exists total_topics int,
+    add column if not exists average_topics_per_content numeric(5,2),
+    add column if not exists average_lessons_per_course numeric(5,2),
+    add column if not exists average_attempts_per_assessment numeric(5,2),
+    add column if not exists total_assessments int,
+    add column if not exists pass_rate numeric(5,2),
+    add column if not exists total_unique_learning_paths int,
+    add column if not exists average_skills_per_learning_path numeric(5,2),
+    add column if not exists average_skills_per_competency numeric(5,2);
+    
+    -- Add platform_skill_demand jsonb
+    alter table public.learning_analytics_cache 
+    add column if not exists platform_skill_demand jsonb;
+    
+    -- Add competency level breakdown columns
+    alter table public.learning_analytics_cache 
+    add column if not exists beginner_count int,
+    add column if not exists intermediate_count int,
+    add column if not exists advanced_count int,
+    add column if not exists expert_count int;
+    
+    -- Add content format usage breakdown columns
+    alter table public.learning_analytics_cache 
+    add column if not exists video_usage_count int,
+    add column if not exists text_usage_count int,
+    add column if not exists code_usage_count int,
+    add column if not exists presentation_usage_count int,
+    add column if not exists mindmap_usage_count int;
+    
+    -- Add engagement level breakdown columns
+    alter table public.learning_analytics_cache 
+    add column if not exists high_engagement_count int,
+    add column if not exists medium_engagement_count int,
+    add column if not exists low_engagement_count int;
+    
+    -- Drop old columns (metrics and category_breakdowns) if they exist
+    -- Note: This will lose data in those columns, but they're being replaced by the new structure
+    if exists (
+      select 1 from information_schema.columns 
+      where table_schema = 'public' 
+      and table_name = 'learning_analytics_cache' 
+      and column_name = 'metrics'
+    ) then
+      alter table public.learning_analytics_cache drop column metrics;
+    end if;
+    
+    if exists (
+      select 1 from information_schema.columns 
+      where table_schema = 'public' 
+      and table_name = 'learning_analytics_cache' 
+      and column_name = 'category_breakdowns'
+    ) then
+      alter table public.learning_analytics_cache drop column category_breakdowns;
+    end if;
+    
+    raise notice '✅ Migrated learning_analytics_cache table to new schema';
+  end if;
+end $$;
+
 create index if not exists idx_la_cache_date   on public.learning_analytics_cache(snapshot_date);
 create index if not exists idx_la_cache_period on public.learning_analytics_cache(period, start_date, end_date);
 
