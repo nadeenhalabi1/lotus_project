@@ -91,80 +91,18 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
             onNarrationReady(chartId, dbTranscriptionText);
           }
         } else if (isNotFound) {
-          // Cache miss - not an error, just need to create transcription
-          console.log(`[Reports Chart ${chartId}] 📭 Cache miss - will create transcription via POST`);
+          // No transcription in DB - this is OK
+          // ⚠️ IMPORTANT: Do NOT create transcription automatically when navigating to Reports
+          // Transcriptions are only created/updated when:
+          // 1. User first loads the Dashboard (startup flow)
+          // 2. User clicks "Refresh Data" button on Dashboard
+          // Reports should only display existing transcriptions from DB
+          console.log(`[Reports Chart ${chartId}] 📭 No transcription in DB - will not create automatically`);
+          console.log(`[Reports Chart ${chartId}] Transcription will be created on Dashboard startup or Refresh Data`);
           setTranscriptionText('');
+          setLoading(false);
           loadedChartIdRef.current = chartId;
           retryCountRef.current = 0;
-          
-          // When system opens and transcription is missing - create via POST get-or-create
-          setTimeout(async () => {
-            try {
-              const chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
-              if (chartElement) {
-                console.log(`[Reports Chart ${chartId}] 📤 Creating transcription via POST get-or-create...`);
-                const isDark = document.documentElement.classList.contains('dark');
-                const canvas = await html2canvas(chartElement, {
-                  backgroundColor: isDark ? '#1f2937' : '#ffffff',
-                  scale: 1,
-                  logging: false,
-                  useCORS: true
-                });
-                
-                const imageUrl = canvas.toDataURL('image/png');
-                
-                // Get current chart data
-                const topic = `${reportTitle || 'Report'} - ${chart.title || chartId}`;
-                const chartData = chart.data || {};
-                
-                // Use POST get-or-create (idempotent - returns existing if exists, creates if not)
-                // ⚠️ CRITICAL: After POST, we MUST fetch from DB (GET) - never display POST response directly
-                // This ensures we always show what's in the DB, not the OpenAI response
-                try {
-                  const result = await apiQueue.enqueue(
-                    `get-or-create-transcription-${chartId}`,
-                    () => chartTranscriptionAPI.getOrCreateTranscription(chartId, topic, chartData, imageUrl)
-                  );
-                  
-                  console.log(`[Reports Chart ${chartId}] ✅ POST ${result?.data?.created ? 'created' : 'found'} transcription - now fetching from DB...`);
-                  
-                  // Wait a moment for DB to be updated (if created)
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                  
-                  // 🔄 CRITICAL: Always fetch from DB after POST - never display POST response directly
-                  // This ensures we always show what's in the DB (single source of truth)
-                  const dbResponse = await apiQueue.enqueue(
-                    `fetch-after-create-${chartId}`,
-                    () => chartTranscriptionAPI.getTranscription(chartId)
-                  );
-                  
-                  const dbTranscriptionText = dbResponse?.data?.transcription_text;
-                  if (dbTranscriptionText && dbTranscriptionText.trim()) {
-                    console.log(`[Reports Chart ${chartId}] ✅ Fetched transcription_text from DB (${dbTranscriptionText.length} chars)`);
-                    setTranscriptionText(dbTranscriptionText); // Set from DB, not from POST response
-                    setLoading(false);
-                    loadingRef.current = false;
-                  } else {
-                    console.warn(`[Reports Chart ${chartId}] ⚠️ DB returned empty transcription_text after POST`);
-                    setLoading(false);
-                    loadingRef.current = false;
-                  }
-                } catch (err) {
-                  console.error(`[Reports Chart ${chartId}] ❌ Failed to create/fetch transcription:`, err);
-                  setLoading(false);
-                  loadingRef.current = false;
-                }
-              } else {
-                console.warn(`[Reports Chart ${chartId}] Chart element not found, cannot create transcription`);
-                setLoading(false);
-                loadingRef.current = false;
-              }
-            } catch (err) {
-              console.error(`[Reports Chart ${chartId}] Failed to create transcription:`, err);
-              setLoading(false);
-              loadingRef.current = false;
-            }
-          }, 2000); // Wait 2 seconds for chart to render
         } else {
           console.log(`[Reports Chart ${chartId}] ⚠️ No transcription_text found in DB for this chart`);
         }
