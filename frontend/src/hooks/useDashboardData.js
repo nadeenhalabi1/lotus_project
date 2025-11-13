@@ -202,8 +202,21 @@ export const useDashboardData = () => {
             return;
           }
           
-          // Additional delay to ensure Recharts is fully rendered
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Additional delay to ensure Recharts is fully rendered (including hidden BOX charts)
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Increased to 2 seconds to ensure hidden charts render
+          
+          // Verify that we have enough chart elements in DOM (should match allChartsForTranscription.length)
+          const allChartElements = document.querySelectorAll('[data-chart-id]');
+          console.log(`[Dashboard Startup] 🔍 DOM Verification: Found ${allChartElements.length} chart elements in DOM`);
+          console.log(`[Dashboard Startup] 🔍 Expected ${allChartsForTranscription.length} charts from API`);
+          if (allChartElements.length < allChartsForTranscription.length) {
+            console.warn(`[Dashboard Startup] ⚠️ WARNING: Only ${allChartElements.length} charts found in DOM, but ${allChartsForTranscription.length} expected!`);
+            console.warn(`[Dashboard Startup] ⚠️ Some charts may not be rendered yet. Waiting additional 2 seconds...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Re-check
+            const recheckElements = document.querySelectorAll('[data-chart-id]');
+            console.log(`[Dashboard Startup] 🔍 After additional wait: Found ${recheckElements.length} chart elements`);
+          }
           
           // Capture all chart images and send to startup endpoint
           if (allChartsForTranscription && allChartsForTranscription.length > 0) {
@@ -221,22 +234,34 @@ export const useDashboardData = () => {
                   const chartId = chart.id || `chart-${i}`;
                   
                   try {
-                    // Find the chart element
-                    let chartElement = document.querySelector(`[data-chart-id="${chartId}"] .recharts-wrapper`);
+                    // Find the chart element - try multiple strategies to ensure we find it
+                    let chartElement = null;
+                    let chartCard = null;
                     
-                    // Fallback: try to find by chart card
+                    // Strategy 1: Find by exact chartId
+                    chartCard = document.querySelector(`[data-chart-id="${chartId}"]`);
+                    if (chartCard) {
+                      chartElement = chartCard.querySelector('.recharts-wrapper');
+                    }
+                    
+                    // Strategy 2: If not found, try to find in hidden container (BOX charts)
                     if (!chartElement) {
-                      const chartCard = document.querySelector(`[data-chart-id="${chartId}"]`);
-                      if (chartCard) {
-                        chartElement = chartCard.querySelector('.recharts-wrapper');
+                      // Hidden charts are in a container with position absolute and top: -9999px
+                      const hiddenContainer = document.querySelector('[aria-hidden="true"][style*="position: absolute"]');
+                      if (hiddenContainer) {
+                        chartCard = hiddenContainer.querySelector(`[data-chart-id="${chartId}"]`);
+                        if (chartCard) {
+                          chartElement = chartCard.querySelector('.recharts-wrapper');
+                        }
                       }
                     }
                     
-                    // Fallback: try to find by index
+                    // Strategy 3: Fallback - try to find by index (last resort)
                     if (!chartElement) {
                       const allChartCards = document.querySelectorAll('[data-chart-id]');
                       if (allChartCards[i]) {
-                        chartElement = allChartCards[i].querySelector('.recharts-wrapper');
+                        chartCard = allChartCards[i];
+                        chartElement = chartCard.querySelector('.recharts-wrapper');
                       }
                     }
                     
@@ -273,6 +298,18 @@ export const useDashboardData = () => {
                 console.log(`[Dashboard Startup] Total charts to process: ${allChartsForTranscription.length}`);
                 console.log(`[Dashboard Startup] Successfully captured: ${chartsForStartup.length}`);
                 console.log(`[Dashboard Startup] Chart IDs captured:`, chartsForStartup.map(c => c.chartId));
+                
+                // ⚠️ CRITICAL: Verify all charts were captured
+                if (chartsForStartup.length < allChartsForTranscription.length) {
+                  const missingCharts = allChartsForTranscription
+                    .filter(chart => !chartsForStartup.find(c => c.chartId === (chart.id || `chart-${allChartsForTranscription.indexOf(chart)}`)))
+                    .map(chart => chart.id || `chart-${allChartsForTranscription.indexOf(chart)}`);
+                  console.error(`[Dashboard Startup] ❌❌❌ MISSING CHARTS: ${missingCharts.length} charts were NOT captured!`);
+                  console.error(`[Dashboard Startup] ❌ Missing chart IDs:`, missingCharts);
+                  console.error(`[Dashboard Startup] ❌ This means these charts will NOT be sent to OpenAI!`);
+                } else {
+                  console.log(`[Dashboard Startup] ✅✅✅ ALL CHARTS CAPTURED: ${chartsForStartup.length}/${allChartsForTranscription.length}`);
+                }
                 
                 if (chartsForStartup.length > 0) {
                   console.log(`[Dashboard Startup] 📤 SENDING TO BACKEND: ${chartsForStartup.length} charts`);
@@ -425,8 +462,21 @@ export const useDashboardData = () => {
         return;
       }
       
-      // Additional delay to ensure Recharts is fully rendered
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Additional delay to ensure Recharts is fully rendered (including hidden BOX charts)
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Increased to 2 seconds to ensure hidden charts render
+      
+      // Verify that we have enough chart elements in DOM (should match allChartsForTranscription.length)
+      const allChartElements = document.querySelectorAll('[data-chart-id]');
+      console.log(`[Dashboard Refresh] 🔍 DOM Verification: Found ${allChartElements.length} chart elements in DOM`);
+      console.log(`[Dashboard Refresh] 🔍 Expected ${allChartsForTranscription.length} charts from API`);
+      if (allChartElements.length < allChartsForTranscription.length) {
+        console.warn(`[Dashboard Refresh] ⚠️ WARNING: Only ${allChartElements.length} charts found in DOM, but ${allChartsForTranscription.length} expected!`);
+        console.warn(`[Dashboard Refresh] ⚠️ Some charts may not be rendered yet. Waiting additional 2 seconds...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Re-check
+        const recheckElements = document.querySelectorAll('[data-chart-id]');
+        console.log(`[Dashboard Refresh] 🔍 After additional wait: Found ${recheckElements.length} chart elements`);
+      }
       
       setTimeout(async () => {
         if (allChartsForTranscription && allChartsForTranscription.length > 0) {
@@ -449,28 +499,40 @@ export const useDashboardData = () => {
                 console.warn(`[Dashboard Refresh] ⚠️ Chart ${i} has no chart.id, falling back to "chart-${i}"`);
               }
               console.log(`[Dashboard Refresh] ========================================`);
-              console.log(`[Dashboard Refresh] Processing chart ${i + 1}/${dashboardData.charts.length}`);
+              console.log(`[Dashboard Refresh] Processing chart ${i + 1}/${allChartsForTranscription.length}`);
               console.log(`[Dashboard Refresh] chartId: "${chartId}"`);
               console.log(`[Dashboard Refresh] chart.id: "${chart.id}"`);
               console.log(`[Dashboard Refresh] chart.title: "${chart.title}"`);
               
               try {
-                // Find the chart element - try multiple selectors
-                let chartElement = document.querySelector(`[data-chart-id="${chartId}"] .recharts-wrapper`);
+                // Find the chart element - try multiple strategies to ensure we find it
+                let chartElement = null;
+                let chartCard = null;
                 
-                // Fallback: try to find by chart card
+                // Strategy 1: Find by exact chartId
+                chartCard = document.querySelector(`[data-chart-id="${chartId}"]`);
+                if (chartCard) {
+                  chartElement = chartCard.querySelector('.recharts-wrapper');
+                }
+                
+                // Strategy 2: If not found, try to find in hidden container (BOX charts)
                 if (!chartElement) {
-                  const chartCard = document.querySelector(`[data-chart-id="${chartId}"]`);
-                  if (chartCard) {
-                    chartElement = chartCard.querySelector('.recharts-wrapper');
+                  // Hidden charts are in a container with position absolute and top: -9999px
+                  const hiddenContainer = document.querySelector('[aria-hidden="true"][style*="position: absolute"]');
+                  if (hiddenContainer) {
+                    chartCard = hiddenContainer.querySelector(`[data-chart-id="${chartId}"]`);
+                    if (chartCard) {
+                      chartElement = chartCard.querySelector('.recharts-wrapper');
+                    }
                   }
                 }
                 
-                // Fallback: try to find by index
+                // Strategy 3: Fallback - try to find by index (last resort)
                 if (!chartElement) {
                   const allChartCards = document.querySelectorAll('[data-chart-id]');
                   if (allChartCards[i]) {
-                    chartElement = allChartCards[i].querySelector('.recharts-wrapper');
+                    chartCard = allChartCards[i];
+                    chartElement = chartCard.querySelector('.recharts-wrapper');
                   }
                 }
                 
@@ -507,6 +569,18 @@ export const useDashboardData = () => {
             console.log(`[Dashboard Refresh] Total charts to process: ${allChartsForTranscription.length}`);
             console.log(`[Dashboard Refresh] Successfully captured: ${chartsForRefresh.length}`);
             console.log(`[Dashboard Refresh] Chart IDs captured:`, chartsForRefresh.map(c => c.chartId));
+            
+            // ⚠️ CRITICAL: Verify all charts were captured
+            if (chartsForRefresh.length < allChartsForTranscription.length) {
+              const missingCharts = allChartsForTranscription
+                .filter(chart => !chartsForRefresh.find(c => c.chartId === (chart.id || `chart-${allChartsForTranscription.indexOf(chart)}`)))
+                .map(chart => chart.id || `chart-${allChartsForTranscription.indexOf(chart)}`);
+              console.error(`[Dashboard Refresh] ❌❌❌ MISSING CHARTS: ${missingCharts.length} charts were NOT captured!`);
+              console.error(`[Dashboard Refresh] ❌ Missing chart IDs:`, missingCharts);
+              console.error(`[Dashboard Refresh] ❌ This means these charts will NOT be sent to OpenAI!`);
+            } else {
+              console.log(`[Dashboard Refresh] ✅✅✅ ALL CHARTS CAPTURED: ${chartsForRefresh.length}/${allChartsForTranscription.length}`);
+            }
             
             // ✅ STEP 4: VERIFY ALL CAPTURED CHARTS HAVE STABLE IDs
             console.log(`[Dashboard Refresh] 🔍 VERIFYING CAPTURED CHART IDs:`);
