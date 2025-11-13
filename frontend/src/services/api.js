@@ -28,7 +28,7 @@ const api = axios.create({
   },
 });
 
-// Request interceptor for JWT token
+// Request interceptor for JWT token and logging
 // For MVP: Token is optional - backend accepts requests without token
 api.interceptors.request.use(
   (config) => {
@@ -37,6 +37,41 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Log request details for chart transcription endpoints
+    if (config.url?.includes('/chart-transcription')) {
+      console.log(`[API Request] ========================================`);
+      console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);
+      console.log(`[API Request] Headers:`, {
+        'content-type': config.headers['Content-Type'],
+      });
+      if (config.data) {
+        try {
+          const dataStr = typeof config.data === 'string' ? config.data : JSON.stringify(config.data);
+          console.log(`[API Request] Body size: ${dataStr.length} chars (${(dataStr.length / 1024 / 1024).toFixed(2)} MB)`);
+          const dataObj = typeof config.data === 'string' ? JSON.parse(config.data) : config.data;
+          if (dataObj.charts && Array.isArray(dataObj.charts)) {
+            console.log(`[API Request] Charts array length: ${dataObj.charts.length}`);
+            console.log(`[API Request] First chart keys:`, dataObj.charts[0] ? Object.keys(dataObj.charts[0]) : 'N/A');
+            console.log(`[API Request] First chart structure:`, dataObj.charts[0] ? {
+              hasChartId: !!dataObj.charts[0].chartId,
+              hasImageUrl: !!dataObj.charts[0].imageUrl,
+              hasContext: !!dataObj.charts[0].context,
+              chartId: dataObj.charts[0].chartId,
+              imageUrlLength: dataObj.charts[0].imageUrl?.length || 0
+            } : 'N/A');
+          } else {
+            console.warn(`[API Request] ⚠️ Body does not have charts array!`, dataObj);
+          }
+        } catch (err) {
+          console.error(`[API Request] ❌ Error parsing request data:`, err);
+        }
+      } else {
+        console.warn(`[API Request] ⚠️ No request body!`);
+      }
+      console.log(`[API Request] ========================================`);
+    }
+    
     // Continue even without token (for MVP)
     return config;
   },
@@ -47,8 +82,21 @@ api.interceptors.request.use(
 
 // Response interceptor for error handling
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log successful responses for chart transcription endpoints
+    if (response.config?.url?.includes('/chart-transcription')) {
+      console.log(`[API Response] ✅ ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url}`);
+    }
+    return response;
+  },
   (error) => {
+    // Log error responses for chart transcription endpoints
+    if (error.config?.url?.includes('/chart-transcription')) {
+      console.error(`[API Response] ❌ ${error.response?.status || 'NO_STATUS'} ${error.config?.method?.toUpperCase()} ${error.config?.url}`);
+      console.error(`[API Response] Error message:`, error.message);
+      console.error(`[API Response] Error response data:`, error.response?.data);
+      console.error(`[API Response] Request body that failed:`, error.config?.data ? JSON.parse(error.config.data) : 'N/A');
+    }
     if (error.response?.status === 401) {
       // Handle unauthorized - redirect to login
       localStorage.removeItem('authToken');
