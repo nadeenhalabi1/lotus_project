@@ -631,8 +631,20 @@ router.post('/chart-transcription/refresh', async (req, res) => {
       }
 
       // Save to DB (always overwrite) and VERIFY
-      console.log(`[refresh] Chart ${chartId}: 💾 Saving to DB with verification...`);
-      const savedData = await upsertTranscriptionSimple({ chartId, text });
+      console.log(`[refresh] Chart ${chartId}: 💾💾💾 CALLING upsertTranscriptionSimple...`);
+      console.log(`[refresh] Chart ${chartId}: Parameters: chartId="${chartId}", textLength=${text.length}`);
+      console.log(`[refresh] Chart ${chartId}: DATABASE_URL available: ${!!process.env.DATABASE_URL}`);
+      
+      let savedData;
+      try {
+        savedData = await upsertTranscriptionSimple({ chartId, text });
+        console.log(`[refresh] Chart ${chartId}: ✅ upsertTranscriptionSimple returned successfully`);
+      } catch (saveErr) {
+        console.error(`[refresh] Chart ${chartId}: ❌❌❌ CRITICAL: upsertTranscriptionSimple FAILED!`);
+        console.error(`[refresh] Chart ${chartId}: Error message: ${saveErr.message}`);
+        console.error(`[refresh] Chart ${chartId}: Error stack: ${saveErr.stack}`);
+        throw saveErr; // Re-throw to be caught by outer catch
+      }
       
       console.log(`[refresh] Chart ${chartId}: ✅✅✅ DB WRITE VERIFIED!`);
       console.log(`[refresh] Chart ${chartId}: Verified chartId: ${savedData.chartId}`);

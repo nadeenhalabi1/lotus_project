@@ -293,17 +293,27 @@ export async function upsertTranscriptionSimple({ chartId, text }) {
   }
   
   try {
+    // 🔍 CRITICAL: Verify DATABASE_URL before proceeding
+    console.log(`[DB] ========================================`);
+    console.log(`[DB] 🔍 PRE-WRITE CHECKS:`);
+    console.log(`[DB] DATABASE_URL exists: ${!!process.env.DATABASE_URL}`);
+    console.log(`[DB] DATABASE_URL length: ${process.env.DATABASE_URL?.length || 0}`);
+    console.log(`[DB] DATABASE_URL preview: ${process.env.DATABASE_URL?.substring(0, 30) || 'N/A'}...`);
+    
     const pool = getPool();
+    console.log(`[DB] Pool obtained: ${!!pool}`);
+    console.log(`[DB] Pool type: ${pool?.constructor?.name || 'unknown'}`);
+    
     const safeChartId = String(chartId || '').trim();
     const safeText = String(text || '').trim();
     const safeSignature = ''; // Empty signature for new workflow (no data change tracking)
     const safeModel = 'gpt-4o-mini'; // Default model
     
-    console.log(`[DB] ========================================`);
     console.log(`[DB] 💾 ATTEMPTING TO SAVE to ai_chart_transcriptions...`);
     console.log(`[DB] chart_id: "${safeChartId}"`);
     console.log(`[DB] transcription_text length: ${safeText.length} chars`);
     console.log(`[DB] transcription_text preview: ${safeText.substring(0, 100)}...`);
+    console.log(`[DB] Parameters: chartId="${safeChartId}", signature="${safeSignature}", model="${safeModel}", textLength=${safeText.length}`);
     
     const query = `INSERT INTO public.ai_chart_transcriptions 
        (chart_id, chart_signature, model, transcription_text, created_at, updated_at)
@@ -316,8 +326,14 @@ export async function upsertTranscriptionSimple({ chartId, text }) {
          updated_at = NOW()
        RETURNING chart_id, transcription_text, updated_at`;
     
+    console.log(`[DB] 🔍 Executing query with ${4} parameters...`);
+    console.log(`[DB] Query: ${query.substring(0, 200)}...`);
+    
     const result = await withRetry(async () => {
-      return await pool.query(query, [safeChartId, safeSignature, safeModel, safeText]);
+      console.log(`[DB] 🔍 Calling pool.query()...`);
+      const queryResult = await pool.query(query, [safeChartId, safeSignature, safeModel, safeText]);
+      console.log(`[DB] 🔍 Query executed, rows returned: ${queryResult?.rows?.length || 0}`);
+      return queryResult;
     }, 3);
     
     if (!result.rows || result.rows.length === 0) {
