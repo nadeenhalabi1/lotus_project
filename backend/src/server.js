@@ -112,11 +112,17 @@ app.listen(PORT, () => {
       // ⚠️ CRITICAL: Check and fix permissions for ai_chart_transcriptions
       // Supabase tables created via migration may be read-only
       try {
-        const { checkAndFixPermissions } = await import('../../scripts/checkAndFixPermissions.js');
+        // Try to import from scripts directory (relative to src/server.js)
+        // Path: backend/src/server.js -> backend/scripts/checkAndFixPermissions.js
+        const { checkAndFixPermissions } = await import('../scripts/checkAndFixPermissions.js');
         await checkAndFixPermissions();
+        console.log('[Startup] ✅ Permissions check completed');
       } catch (permErr) {
-        console.error('[Startup] Permissions check error (non-fatal):', permErr.message);
-        // Don't block startup - permissions can be fixed manually
+        // This is non-fatal - permissions can be fixed manually via Supabase SQL Editor
+        // The error might be because the script doesn't exist or path is wrong
+        console.warn('[Startup] ⚠️ Permissions check skipped (non-fatal):', permErr.message);
+        console.warn('[Startup] 💡 To fix permissions manually, run DB/fix_ai_chart_transcriptions_permissions.sql in Supabase SQL Editor');
+        // Don't block startup - this is optional
       }
     }
     
