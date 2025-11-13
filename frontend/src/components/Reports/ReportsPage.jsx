@@ -437,165 +437,72 @@ const ReportsPage = () => {
             // Wait for charts to render
             await new Promise(resolve => setTimeout(resolve, 3000));
             
-            // Prepare charts array for startup-fill (only for charts without transcriptions)
-            const chartsForFill = [];
+            // Prepare charts array for refresh (always re-generate transcriptions)
+            const chartsForRefresh = [];
             
             for (let i = 0; i < report.charts.length; i++) {
               const chart = report.charts[i];
-              const chartId = chart.id || `chart-${i}`;
-              
+              const initialChartId = chart.id || `chart-${i}`;
+              let chartId = initialChartId;
+
               try {
-                // First check if transcription exists in DB (DB is the single source of truth)
-                // Use queue to prevent rate limiting
-                let needsTranscription = true;
-                try {
-                  const existingTranscription = await apiQueue.enqueue(
-                    `check-transcription-${chartId}`,
-                    () => chartTranscriptionAPI.getTranscription(chartId)
-                  );
-                  // Check if transcription exists - handle both direct API response and queue response (404 handled)
-                  const transcriptionText = existingTranscription?.data?.data?.text;
-                  const isNotFound = existingTranscription?.data?.data?.notFound === true;
-                  
-                  if (transcriptionText && !isNotFound) {
-                    console.log(`[Reports] Chart ${chartId} already has transcription in DB, skipping`);
-                    needsTranscription = false;
-                  } else {
-                    console.log(`[Reports] Chart ${chartId} has no transcription in DB (404 or notFound), will create one`);
-                    needsTranscription = true;
-                  }
-                } catch (err) {
-                  // 404 means no transcription in DB - that's OK, we'll create one
-                  if (err.response?.status === 404 || err.message?.includes('Circuit breaker')) {
-                    console.log(`[Reports] Chart ${chartId} has no transcription in DB, will create one`);
-                    needsTranscription = true;
-                  } else if (err.response?.status === 429) {
-                    // Rate limited - skip for now, will be created later
-                    console.warn(`[Reports] Rate limited when checking transcription for ${chartId}, will skip for now`);
-                    continue; // Skip this chart if rate limited
-                  } else {
-                    console.warn(`[Reports] Error checking transcription in DB for ${chartId}:`, err);
-                    // Assume we need transcription if there's an error
-                    needsTranscription = true;
-                  }
-                }
-                
-                // Skip if transcription already exists in DB
-                if (!needsTranscription) {
-                  continue;
-                }
-                
-                // Find the chart element using the exact chartId
-                // First try with the chartId we computed
-                let chartElement = document.querySelector(`[data-chart-id="${chartId}"] [data-chart-only="true"]`);
-                
-                // Fallback: try to find by index if chartId doesn't match
+                let chartElement = document.querySelector(`[data-chart-id="${initialChartId}"] [data-chart-only="true"]`);
+
                 if (!chartElement) {
-                  console.warn(`[Reports] Chart element not found for chartId="${chartId}", trying by index ${i}`);
                   const allChartCards = document.querySelectorAll('[data-chart-id]');
                   if (allChartCards[i]) {
                     const fallbackChartId = allChartCards[i].getAttribute('data-chart-id');
-                    console.log(`[Reports] Found fallback chartId="${fallbackChartId}" at index ${i}`);
                     chartElement = allChartCards[i].querySelector('[data-chart-only="true"]');
-                    // Log mismatch for debugging
-                    if (fallbackChartId && fallbackChartId !== chartId) {
-                      console.warn(`[Reports] ⚠️ ChartId mismatch: expected "${chartId}", found "${fallbackChartId}" - this may cause transcription mismatch!`);
+                    if (fallbackChartId) {
+                      console.warn(`[Reports] ⚠️ ChartId mismatch. Expected "${initialChartId}", found "${fallbackChartId}". Using fallback.`);
+                      chartId = fallbackChartId;
                     }
                   }
                 }
-                
-                if (chartElement) {
-                  // Verify chartId matches the DOM element
-                  const actualChartId = chartElement.closest('[data-chart-id]')?.getAttribute('data-chart-id');
-                  if (actualChartId && actualChartId !== chartId) {
-                    console.error(`[Reports] ⚠️ CRITICAL: ChartId mismatch! Expected "${chartId}", but DOM has "${actualChartId}"`);
-                    console.error(`[Reports] This will cause transcription to be saved/loaded with wrong chartId!`);
-                    // Use the actual chartId from DOM to ensure consistency
-                    const correctedChartId = actualChartId;
-                    console.log(`[Reports] Using corrected chartId: "${correctedChartId}"`);
-                    
-                    console.log(`[Reports] Capturing chart ${correctedChartId} for transcription...`);
-                    // Capture chart image
-                    const canvas = await html2canvas(chartElement, {
-                      backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
-                      scale: 1,
-                      logging: false,
-                      useCORS: true
-                    });
-                    
-                    const imageUrl = canvas.toDataURL('image/png');
-                    const topic = `${report.executiveSummary?.title || reportId} - ${chart.title}`;
-                    
-                    chartsForFill.push({
-                      chartId: correctedChartId, // Use corrected chartId
-                      topic,
-                      chartData: chart.data || {},
-                      imageUrl
-                    });
-                  } else {
-                    console.log(`[Reports] ✅ ChartId matches: "${chartId}"`);
-                    console.log(`[Reports] Capturing chart ${chartId} for transcription...`);
-                    // Capture chart image
-                    const canvas = await html2canvas(chartElement, {
-                      backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
-                      scale: 1,
-                      logging: false,
-                      useCORS: true
-                    });
-                    
-                    const imageUrl = canvas.toDataURL('image/png');
-                    const topic = `${report.executiveSummary?.title || reportId} - ${chart.title}`;
-                    
-                    chartsForFill.push({
-                      chartId,
-                      topic,
-                      chartData: chart.data || {},
-                      imageUrl
-                    });
-                  }
-                } else {
-                  console.warn(`[Reports] Chart element not found for ${chartId}, will retry later`);
+
+                if (!chartElement) {
+                  console.warn(`[Reports] ❌ Chart element not found for ${initialChartId}, skipping capture.`);
+                  continue;
                 }
-              } catch (err) {
-                console.error(`[Reports] Failed to prepare chart ${chartId} for transcription:`, err);
-                // Continue with other charts
+
+                const canvas = await html2canvas(chartElement, {
+                  backgroundColor: theme === 'dark' ? '#1f2937' : '#ffffff',
+                  scale: 1,
+                  logging: false,
+                  useCORS: true
+                });
+
+                const imageUrl = canvas.toDataURL('image/png');
+                const context = `${report.executiveSummary?.title || reportId} - ${chart.title || chartId}`;
+
+                chartsForRefresh.push({
+                  chartId,
+                  imageUrl,
+                  context
+                });
+
+                console.log(`[Reports] ✅ Prepared chart ${chartId} for refresh (image length: ${imageUrl.length})`);
+              } catch (captureErr) {
+                console.error(`[Reports] ❌ Failed to capture chart ${chartId}:`, captureErr);
               }
             }
-            
-            // Batch process all charts that need transcriptions
-            // Use queue to prevent rate limiting
-            if (chartsForFill.length > 0) {
-              console.log(`[Reports] Queuing transcription creation for ${chartsForFill.length} charts...`);
-              
-              // Process ONE chart at a time through queue to prevent rate limiting
-              for (let i = 0; i < chartsForFill.length; i++) {
-                const chart = chartsForFill[i];
-                try {
-                  console.log(`[Reports] Queuing transcription creation for chart ${i + 1}/${chartsForFill.length}: ${chart.chartId}`);
-                  
-                  // Queue each chart individually - queue handles delays automatically
-                  await apiQueue.enqueue(
-                    `create-transcription-${chart.chartId}`,
-                    () => chartTranscriptionAPI.startupFill([chart])
-                  );
-                  
-                  console.log(`[Reports] Chart ${chart.chartId} transcription queued successfully`);
-                } catch (err) {
-                  console.error(`[Reports] Failed to queue transcription for ${chart.chartId}:`, err);
-                  // Continue with next chart even if one fails
-                }
+
+            if (chartsForRefresh.length > 0) {
+              try {
+                console.log(`[Reports] 📤 Sending ${chartsForRefresh.length} report charts to /chart-transcription/refresh`);
+                const refreshKey = `report-refresh-${reportId}-${Date.now()}`;
+                const response = await apiQueue.enqueue(refreshKey, () => chartTranscriptionAPI.refresh(chartsForRefresh));
+
+                console.log(`[Reports] ✅ Report charts refresh completed:`, response.data);
+
+                setTimeout(() => {
+                  window.dispatchEvent(new CustomEvent('reportTranscriptionsRefreshed'));
+                }, 8000);
+              } catch (refreshErr) {
+                console.error(`[Reports] ❌ Failed to refresh report chart transcriptions:`, refreshErr);
               }
-              
-              console.log(`[Reports] All transcription creation requests queued`);
-              
-              // Trigger reload of transcriptions after a longer delay to ensure DB is updated
-              setTimeout(() => {
-                window.dispatchEvent(new CustomEvent('reportTranscriptionsRefreshed'));
-              }, 10000); // Increased delay to allow queue to process
             } else {
-              console.log(`[Reports] All charts already have transcriptions in DB - no action needed`);
-              // Don't refresh existing transcriptions - only create new ones for missing charts
-              // Refresh Data button is responsible for refreshing transcriptions
+              console.log(`[Reports] ⚠️ No report charts were captured for refresh.`);
             }
           } catch (err) {
             console.error('[Reports] Failed to create transcriptions:', err);
