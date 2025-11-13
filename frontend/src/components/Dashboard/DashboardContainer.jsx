@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDashboardData } from '../../hooks/useDashboardData';
 import { dashboardAPI } from '../../services/api';
@@ -38,19 +38,28 @@ const DashboardContainer = () => {
   }, [refreshStatus]);
 
   // Load all charts (priority + BOX) for rendering (including hidden charts for transcription)
+  // Only load once when data is first available, not on every navigation
+  const allChartsLoadedRef = useRef(false);
   useEffect(() => {
     const loadAllCharts = async () => {
+      // Only load once per session to avoid unnecessary API calls when navigating
+      if (allChartsLoadedRef.current) {
+        return;
+      }
+      
       try {
         const response = await dashboardAPI.getAllCharts();
         setAllCharts(response.data?.charts || []);
+        allChartsLoadedRef.current = true;
       } catch (err) {
         console.error('[DashboardContainer] Failed to load all charts:', err);
         // Fallback to dashboard data if available
         setAllCharts(data?.charts || []);
+        allChartsLoadedRef.current = true; // Mark as loaded even on error to prevent retries
       }
     };
 
-    if (data?.charts) {
+    if (data?.charts && !allChartsLoadedRef.current) {
       loadAllCharts();
     }
   }, [data?.charts]);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { dashboardAPI, chartTranscriptionAPI } from '../services/api';
 import { browserCache } from '../services/cache';
 import html2canvas from 'html2canvas';
@@ -11,6 +11,7 @@ export const useDashboardData = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshStatus, setRefreshStatus] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const startupTranscriptionDoneRef = useRef(false); // Track if startup transcription has already run
 
   const fetchDashboard = async (autoRefreshIfEmpty = false) => {
     try {
@@ -132,21 +133,26 @@ export const useDashboardData = () => {
         });
         
         // ⚠️ CRITICAL: On startup, send ALL charts (not just priority) to OpenAI for transcription
-        // Fetch all charts from backend to ensure we capture everything
-        console.log(`[Dashboard] ✅ Dashboard loaded with ${dashboardData.charts?.length || 0} priority charts`);
-        console.log(`[Dashboard] 🚀 Starting startup transcription flow for ALL charts...`);
-        
-        // Fetch ALL charts (priority + BOX + combined analytics) for transcription
-        let allChartsForTranscription = [];
-        try {
-          const allChartsResponse = await dashboardAPI.getAllCharts();
-          allChartsForTranscription = allChartsResponse.data?.charts || [];
-          console.log(`[Dashboard Startup] 📊 Fetched ${allChartsForTranscription.length} total charts for transcription`);
-          console.log(`[Dashboard Startup] Chart IDs:`, allChartsForTranscription.map(c => c.id));
-        } catch (err) {
-          console.error(`[Dashboard Startup] ❌ Failed to fetch all charts, falling back to dashboard charts:`, err);
-          allChartsForTranscription = dashboardData.charts || [];
-        }
+        // BUT: Only run startup transcription ONCE per session (not every time we navigate to dashboard)
+        // This prevents unnecessary OpenAI calls when switching between Dashboard and Reports
+        if (!startupTranscriptionDoneRef.current) {
+          console.log(`[Dashboard] ✅ Dashboard loaded with ${dashboardData.charts?.length || 0} priority charts`);
+          console.log(`[Dashboard] 🚀 Starting startup transcription flow for ALL charts (first time only)...`);
+          
+          // Mark as done immediately to prevent duplicate runs
+          startupTranscriptionDoneRef.current = true;
+          
+          // Fetch ALL charts (priority + BOX + combined analytics) for transcription
+          let allChartsForTranscription = [];
+          try {
+            const allChartsResponse = await dashboardAPI.getAllCharts();
+            allChartsForTranscription = allChartsResponse.data?.charts || [];
+            console.log(`[Dashboard Startup] 📊 Fetched ${allChartsForTranscription.length} total charts for transcription`);
+            console.log(`[Dashboard Startup] Chart IDs:`, allChartsForTranscription.map(c => c.id));
+          } catch (err) {
+            console.error(`[Dashboard Startup] ❌ Failed to fetch all charts, falling back to dashboard charts:`, err);
+            allChartsForTranscription = dashboardData.charts || [];
+          }
         
         // Wait for charts to render, then capture and send to OpenAI
         const waitForChartsStartup = async (maxAttempts = 20, delayMs = 500) => {
@@ -283,6 +289,8 @@ export const useDashboardData = () => {
               console.error(`[Dashboard Startup] ❌ Error in startup transcription flow:`, err);
             }
           })();
+        } else {
+          console.log(`[Dashboard] ⏭️ Skipping startup transcription - already completed in this session`);
         }
       }
     } catch (err) {
