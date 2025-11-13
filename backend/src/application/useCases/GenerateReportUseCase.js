@@ -164,7 +164,7 @@ export class GenerateReportUseCase {
 
     const relevantKeywords = reportChartMap[reportType] || [];
     
-    return allCharts.filter(chart => {
+    const filtered = allCharts.filter(chart => {
       const chartId = chart.id || '';
       const service = chart.metadata?.service || '';
       const chartType = chart.metadata?.chartType || '';
@@ -175,6 +175,19 @@ export class GenerateReportUseCase {
         chartType === keyword
       );
     }).slice(0, 6); // Limit to 6 most relevant charts
+    
+    // ✅ STEP 4: VERIFY ALL REPORT CHARTS HAVE STABLE IDs
+    console.log('[GenerateReportUseCase] ========================================');
+    console.log(`[GenerateReportUseCase] 🔍 REPORT CHART ID VERIFICATION (${reportType}):`);
+    filtered.forEach((chart, index) => {
+      console.log(`[GenerateReportUseCase] Chart ${index + 1}: id="${chart.id}", title="${chart.title}"`);
+      if (!chart.id) {
+        console.error(`[GenerateReportUseCase] ❌ ERROR: Chart ${index + 1} has no ID!`);
+      }
+    });
+    console.log('[GenerateReportUseCase] ========================================');
+    
+    return filtered;
   }
 
   getRawDataForReport(latestEntries, reportType) {

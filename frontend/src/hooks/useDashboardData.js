@@ -221,7 +221,15 @@ export const useDashboardData = () => {
               const chart = dashboardData.charts[i];
               const chartId = chart.id || `chart-${i}`;
               
-              console.log(`[Dashboard Refresh] Processing chart ${i + 1}/${dashboardData.charts.length}: ${chartId}`);
+              // ✅ STEP 4: LOG CHART ID CONSISTENCY
+              if (!chart.id) {
+                console.warn(`[Dashboard Refresh] ⚠️ Chart ${i} has no chart.id, falling back to "chart-${i}"`);
+              }
+              console.log(`[Dashboard Refresh] ========================================`);
+              console.log(`[Dashboard Refresh] Processing chart ${i + 1}/${dashboardData.charts.length}`);
+              console.log(`[Dashboard Refresh] chartId: "${chartId}"`);
+              console.log(`[Dashboard Refresh] chart.id: "${chart.id}"`);
+              console.log(`[Dashboard Refresh] chart.title: "${chart.title}"`);
               
               try {
                 // Find the chart element - try multiple selectors
@@ -276,6 +284,15 @@ export const useDashboardData = () => {
             console.log(`[Dashboard Refresh] Total charts in data: ${dashboardData.charts.length}`);
             console.log(`[Dashboard Refresh] Successfully captured: ${chartsForRefresh.length}`);
             console.log(`[Dashboard Refresh] Chart IDs captured:`, chartsForRefresh.map(c => c.chartId));
+            
+            // ✅ STEP 4: VERIFY ALL CAPTURED CHARTS HAVE STABLE IDs
+            console.log(`[Dashboard Refresh] 🔍 VERIFYING CAPTURED CHART IDs:`);
+            chartsForRefresh.forEach((chart, idx) => {
+              console.log(`[Dashboard Refresh] Captured chart ${idx + 1}: chartId="${chart.chartId}", context="${chart.context}"`);
+              if (!chart.chartId || chart.chartId.startsWith('chart-')) {
+                console.warn(`[Dashboard Refresh] ⚠️ Chart ${idx + 1} has generic/missing chartId: "${chart.chartId}"`);
+              }
+            });
             
             // Call /refresh endpoint - processes charts sequentially, always overwrites
             if (chartsForRefresh.length > 0) {

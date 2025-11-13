@@ -164,6 +164,17 @@ export class GetDashboardUseCase {
         };
       }
 
+      // ✅ STEP 4: VERIFY ALL CHARTS HAVE STABLE IDs
+      console.log('[GetDashboardUseCase] ========================================');
+      console.log('[GetDashboardUseCase] 🔍 CHART ID VERIFICATION:');
+      charts.forEach((chart, index) => {
+        console.log(`[GetDashboardUseCase] Chart ${index + 1}: id="${chart.id}", title="${chart.title}"`);
+        if (!chart.id) {
+          console.error(`[GetDashboardUseCase] ❌ ERROR: Chart ${index + 1} has no ID!`);
+        }
+      });
+      console.log('[GetDashboardUseCase] ========================================');
+
       const lastUpdated = charts
         .map((chart) => chart.metadata?.lastUpdated)
         .filter(Boolean)

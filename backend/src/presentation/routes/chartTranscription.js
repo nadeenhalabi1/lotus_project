@@ -967,5 +967,85 @@ router.post('/chart-transcription/test-write', async (req, res) => {
   }
 });
 
+/**
+ * ✅ STEP 1.1: DEBUG WRITE ENDPOINT (manual upsert)
+ * POST /debug/ai/chart-transcription/test
+ * Body: { chartId: string, text: string }
+ * 
+ * Direct DB write test - bypasses all flow, just tests the DB operation
+ */
+router.post('/debug/ai/chart-transcription/test', async (req, res) => {
+  const { chartId, text } = req.body || {};
+  
+  console.log(`[DEBUG TEST] ========================================`);
+  console.log(`[DEBUG TEST] WRITE TEST CALLED`);
+  console.log(`[DEBUG TEST] chartId: "${chartId}"`);
+  console.log(`[DEBUG TEST] text: "${text}"`);
+  console.log(`[DEBUG TEST] text length: ${text?.length || 0}`);
+  
+  if (!chartId || !text) {
+    return res.status(400).json({ ok: false, error: "chartId and text are required" });
+  }
+
+  try {
+    console.log(`[DEBUG TEST] Calling upsertTranscriptionSimple...`);
+    const row = await upsertTranscriptionSimple({ chartId, text });
+    
+    console.log(`[DEBUG TEST] ✅ SUCCESS!`);
+    console.log(`[DEBUG TEST] Returned row:`, {
+      chartId: row.chartId,
+      transcriptionText: row.transcriptionText,
+      textLength: row.transcriptionText?.length,
+      updatedAt: row.updatedAt
+    });
+    console.log(`[DEBUG TEST] ========================================`);
+    
+    return res.json({ ok: true, chartId, row });
+  } catch (err) {
+    console.error("[DEBUG TEST] DB error:", err);
+    console.error("[DEBUG TEST] Error stack:", err.stack);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/**
+ * ✅ STEP 1.2: DEBUG READ ENDPOINT
+ * GET /debug/ai/chart-transcription/:chartId
+ * 
+ * Direct DB read test - verifies what's actually in the DB
+ */
+router.get('/debug/ai/chart-transcription/:chartId', async (req, res) => {
+  const chartId = req.params.chartId;
+  
+  console.log(`[DEBUG READ] ========================================`);
+  console.log(`[DEBUG READ] READ TEST CALLED`);
+  console.log(`[DEBUG READ] chartId: "${chartId}"`);
+  
+  try {
+    console.log(`[DEBUG READ] Calling getTranscriptionByChartId...`);
+    const row = await getTranscriptionByChartId(chartId);
+    
+    if (!row) {
+      console.log(`[DEBUG READ] ⚠️ No row found for chartId: "${chartId}"`);
+      return res.json({ ok: true, chartId, row: null });
+    }
+    
+    console.log(`[DEBUG READ] ✅ SUCCESS!`);
+    console.log(`[DEBUG READ] Found row:`, {
+      chart_id: row.chart_id,
+      transcription_text_length: row.transcription_text?.length || 0,
+      transcription_text_preview: row.transcription_text?.substring(0, 100),
+      updated_at: row.updated_at
+    });
+    console.log(`[DEBUG READ] ========================================`);
+    
+    return res.json({ ok: true, chartId, row });
+  } catch (err) {
+    console.error("[DEBUG READ] DB error:", err);
+    console.error("[DEBUG READ] Error stack:", err.stack);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 export default router;
 
