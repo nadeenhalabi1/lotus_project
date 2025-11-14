@@ -354,11 +354,27 @@ CREATE TABLE IF NOT EXISTS ai_report_conclusions (
     generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-    -- Expiration timestamp: 60 days
-    expires_at   TIMESTAMPTZ GENERATED ALWAYS AS (
-        created_at + INTERVAL '60 days'
-    ) STORED
+    -- Expiration timestamp: 60 days (set via trigger)
+    expires_at   TIMESTAMPTZ
 );
+
+-- Trigger function to set expires_at automatically
+CREATE OR REPLACE FUNCTION set_ai_report_conclusions_expires_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.expires_at IS NULL THEN
+        NEW.expires_at := NEW.created_at + INTERVAL '60 days';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to set expires_at on insert
+DROP TRIGGER IF EXISTS trg_ai_report_conclusions_expires_at ON ai_report_conclusions;
+CREATE TRIGGER trg_ai_report_conclusions_expires_at
+    BEFORE INSERT ON ai_report_conclusions
+    FOR EACH ROW
+    EXECUTE FUNCTION set_ai_report_conclusions_expires_at();
 
 CREATE INDEX IF NOT EXISTS idx_ai_conclusions_generated_at
     ON ai_report_conclusions (generated_at);
