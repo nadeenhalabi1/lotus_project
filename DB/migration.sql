@@ -340,3 +340,28 @@ begin
   -- Note: ai_chart_transcriptions are overwritten on refresh, no expiration needed
 end $$;
 
+CREATE TABLE IF NOT EXISTS ai_report_conclusions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Report identifier
+    report_id   UUID,
+    report_name TEXT NOT NULL,
+
+    -- Full JSON response from OpenAI
+    conclusions JSONB NOT NULL,
+
+    -- Timestamp fields
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Expiration timestamp: 60 days
+    expires_at   TIMESTAMPTZ GENERATED ALWAYS AS (
+        created_at + INTERVAL '60 days'
+    ) STORED
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_conclusions_generated_at
+    ON ai_report_conclusions (generated_at);
+
+CREATE INDEX IF NOT EXISTS idx_ai_conclusions_report_name
+    ON ai_report_conclusions (report_name);
