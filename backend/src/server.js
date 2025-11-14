@@ -7,6 +7,7 @@ import dataRoutes from './presentation/routes/data.js';
 import openaiRoutes from './presentation/routes/openai.js';
 import chartTranscriptionRoutes from './presentation/routes/chartTranscription.js';
 import healthRoutes from './presentation/routes/health.js';
+import ragRoutes from './presentation/routes/rag.js';
 import { errorHandler } from './presentation/middleware/errorHandler.js';
 import { auditMiddleware } from './presentation/middleware/auditMiddleware.js';
 import { securityConfig } from './config/security.js';
@@ -76,6 +77,7 @@ app.use('/api/v1/data', dataRoutes);
 app.use('/api/v1/openai', openaiRoutes);
 app.use('/api/v1/ai', chartTranscriptionRoutes);
 app.use('/api/v1/health', healthRoutes);
+app.use('/api', ragRoutes); // RAG endpoint: /api/fill-content-metrics
 
 // Error handling
 app.use(errorHandler);
