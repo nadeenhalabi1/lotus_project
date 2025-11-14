@@ -1,18 +1,17 @@
 # backend/Dockerfile
 FROM node:20-slim
 
-# שכבת דפנדנסיז נקייה
 WORKDIR /app
 ENV NODE_ENV=production
-# שמים את cache של npm מחוץ ל-node_modules כדי למנוע EBUSY
 ENV NPM_CONFIG_CACHE=/tmp/.npm
 
-# מתקינים רק לפי package*.json (מנצל cache טוב)
+# Copy package files first for better caching
 COPY package*.json ./
-# שימוש ב-npm install כדי להימנע מתלות ב-lockfile לא מסונכרן
-RUN npm install --omit=dev
 
-# עכשיו מעתיקים את שאר הקוד
+# Install dependencies
+RUN npm install --omit=dev --no-audit --no-fund
+
+# Copy application code
 COPY . .
 
 # פורט ה-API
