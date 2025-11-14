@@ -8,32 +8,22 @@ if (!CONTENT_STUDIO_API_URL) {
 }
 
 export async function fetchContentMetricsFromContentStudio() {
-  // 1. אובייקט עם כל השדות שרוצים שיתמלאו ע"י Content Studio
-  const payloadObject = {
-    total_courses_published: null,
-    AI_generated_content_count: null,
-    trainer_generated_content_count: null,
-    mixed_or_collaborative_content_count: null,
-    most_used_creator_type: "",
-    ai_lessons_count: null,
-    trainer_lessons_count: null,
-    collaborative_lessons_count: null,
-    course_id: null,
-    course_name: "",
-    content_id: null,
-    total_usage_count: null,
-    content_name: "",
-    content_generator: "",
-    trainer_id: null,
-    content_type: "",
-    lesson_id: null,
-    lesson_name: ""
+  // 1. Inner payload structure
+  const innerPayload = {
+    courses: [],
+    topics_stand_alone: []
   };
 
-  const payloadString = JSON.stringify(payloadObject);
+  // 2. First wrapper level
+  const wrapper = {
+    serviceName: "ManagementReporting",
+    payload: JSON.stringify(innerPayload)
+  };
+
+  // 3. Second wrapper level (for qs.stringify)
+  const payloadString = JSON.stringify(wrapper);
 
   const body = qs.stringify({
-    serviceName: "ManagementReporting",
     payload: payloadString
   });
 
@@ -45,14 +35,32 @@ export async function fetchContentMetricsFromContentStudio() {
       timeout: 30000
     });
 
+    // 4. Parse response in two levels
     const { payload } = response.data || {};
 
     if (!payload || typeof payload !== "string") {
       throw new Error("Invalid payload returned from Content Studio");
     }
 
-    const filledPayload = JSON.parse(payload);
-    return filledPayload;
+    // First level: { serviceName: "...", payload: "<stringified inner JSON>" }
+    const level1 = JSON.parse(payload);
+
+    if (!level1.payload || typeof level1.payload !== "string") {
+      throw new Error("Invalid inner payload structure from Content Studio");
+    }
+
+    // Second level: { courses: [...], topics_stand_alone: [...] }
+    const data = JSON.parse(level1.payload);
+
+    if (!data.courses || !Array.isArray(data.courses)) {
+      throw new Error("Content Studio payload does not contain 'courses' array");
+    }
+
+    if (!data.topics_stand_alone || !Array.isArray(data.topics_stand_alone)) {
+      throw new Error("Content Studio payload does not contain 'topics_stand_alone' array");
+    }
+
+    return data;
   } catch (err) {
     console.error("Error calling Content Studio:", err.message);
     throw err;

@@ -1,125 +1,282 @@
 import { getPool, withRetry } from './pool.js';
 
 /**
- * שמירת snapshot יחיד בטבלאות:
- * - overview: מדדי סיכום
- * - contents: פרטי תוכן ולקחים
+ * Save normalized Content Studio data to new schema:
+ * - courses
+ * - course_org_permissions
+ * - topics
+ * - course_topics
+ * - topic_skills
+ * - contents
  *
- * @param {object} data - האובייקט שחזר מ-Content Studio (parsed JSON)
+ * @param {object} data - { courses: [...], topics_stand_alone: [...] }
  */
 export async function saveContentStudioSnapshot(data) {
   const pool = getPool();
   const client = await pool.connect();
 
-  const now = new Date();
-  // snapshot_date יהיה התאריך (ללא שעה)
-  const snapshotDate = now.toISOString().slice(0, 10); // YYYY-MM-DD
-
   try {
     await client.query("BEGIN");
 
-    // 1. שמירה לטבלת overview
-    await withRetry(async () => {
-      return await client.query(
-        `
-        INSERT INTO content_studio_overview_cache (
-          snapshot_date,
-          total_courses_published,
-          "AI_generated_content_count",
-          trainer_generated_content_count,
-          mixed_or_collaborative_content_count,
-          most_used_creator_type,
-          ai_lessons_count,
-          trainer_lessons_count,
-          collaborative_lessons_count,
-          ingested_at
-        )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-        ON CONFLICT (snapshot_date)
-        DO UPDATE SET
-          total_courses_published = EXCLUDED.total_courses_published,
-          "AI_generated_content_count" = EXCLUDED."AI_generated_content_count",
-          trainer_generated_content_count = EXCLUDED.trainer_generated_content_count,
-          mixed_or_collaborative_content_count = EXCLUDED.mixed_or_collaborative_content_count,
-          most_used_creator_type = EXCLUDED.most_used_creator_type,
-          ai_lessons_count = EXCLUDED.ai_lessons_count,
-          trainer_lessons_count = EXCLUDED.trainer_lessons_count,
-          collaborative_lessons_count = EXCLUDED.collaborative_lessons_count,
-          ingested_at = EXCLUDED.ingested_at
-        `,
-        [
-          snapshotDate,
-          data.total_courses_published ?? 0,
-          data.AI_generated_content_count ?? 0,
-          data.trainer_generated_content_count ?? 0,
-          data.mixed_or_collaborative_content_count ?? 0,
-          data.most_used_creator_type ?? null,
-          data.ai_lessons_count ?? 0,
-          data.trainer_lessons_count ?? 0,
-          data.collaborative_lessons_count ?? 0,
-          now
-        ]
-      );
-    }, 3);
+    // Process courses
+    if (data.courses && Array.isArray(data.courses)) {
+      for (const course of data.courses) {
+        // 1. UPSERT course
+        await withRetry(async () => {
+          return await client.query(
+            `
+            INSERT INTO public.courses (
+              course_id,
+              course_name,
+              course_language,
+              trainer_id,
+              trainer_name,
+              permission_scope,
+              total_usage_count,
+              created_at,
+              status
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (course_id)
+            DO UPDATE SET
+              course_name = EXCLUDED.course_name,
+              course_language = EXCLUDED.course_language,
+              trainer_id = EXCLUDED.trainer_id,
+              trainer_name = EXCLUDED.trainer_name,
+              permission_scope = EXCLUDED.permission_scope,
+              total_usage_count = EXCLUDED.total_usage_count,
+              created_at = EXCLUDED.created_at,
+              status = EXCLUDED.status
+            `,
+            [
+              course.course_id ?? null,
+              course.course_name ?? null,
+              course.course_language ?? null,
+              course.trainer_id ?? null,
+              course.trainer_name ?? null,
+              course.permission === "all" ? "all" : (Array.isArray(course.permission) ? "orgs" : "all"),
+              course.total_usage_count ?? 0,
+              course.created_at ? new Date(course.created_at) : new Date(),
+              course.status ?? "active"
+            ]
+          );
+        }, 3);
 
-    // 2. שמירה לטבלת contents
-    // כאן מניחים שמדובר בשורה אחת של תוכן (אם בעתיד זה יהיה מערך, צריך לולאה)
-    await withRetry(async () => {
-      return await client.query(
-        `
-        INSERT INTO content_studio_contents_cache (
-          snapshot_date,
-          content_id,
-          course_id,
-          course_name,
-          content_name,
-          content_generator,
-          total_usage_count,
-          trainer_id,
-          content_type,
-          lesson_id,
-          lesson_name,
-          ingested_at
-        )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-        ON CONFLICT (snapshot_date, content_id)
-        DO UPDATE SET
-          course_id = EXCLUDED.course_id,
-          course_name = EXCLUDED.course_name,
-          content_name = EXCLUDED.content_name,
-          content_generator = EXCLUDED.content_generator,
-          total_usage_count = EXCLUDED.total_usage_count,
-          trainer_id = EXCLUDED.trainer_id,
-          content_type = EXCLUDED.content_type,
-          lesson_id = EXCLUDED.lesson_id,
-          lesson_name = EXCLUDED.lesson_name,
-          ingested_at = EXCLUDED.ingested_at
-        `,
-        [
-          snapshotDate,
-          data.content_id ?? "unknown",
-          data.course_id ?? null,
-          data.course_name ?? null,
-          data.content_name ?? null,
-          data.content_generator ?? null,
-          data.total_usage_count ?? 0,
-          data.trainer_id ?? null,
-          data.content_type ?? null,
-          data.lesson_id ?? null,
-          data.lesson_name ?? null,
-          now
-        ]
-      );
-    }, 3);
+        // 2. Insert course_org_permissions (if permission is array)
+        if (Array.isArray(course.permission) && course.permission.length > 0) {
+          for (const orgUuid of course.permission) {
+            await withRetry(async () => {
+              return await client.query(
+                `
+                INSERT INTO public.course_org_permissions (course_id, org_uuid)
+                VALUES ($1, $2)
+                ON CONFLICT (course_id, org_uuid) DO NOTHING
+                `,
+                [course.course_id, orgUuid]
+              );
+            }, 3);
+          }
+        }
+
+        // 3. Process topics within course
+        if (course.topics && Array.isArray(course.topics)) {
+          for (const topic of course.topics) {
+            // UPSERT topic
+            await withRetry(async () => {
+              return await client.query(
+                `
+                INSERT INTO public.topics (
+                  topic_id,
+                  topic_name,
+                  topic_language,
+                  total_usage_count,
+                  created_at,
+                  status
+                )
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (topic_id)
+                DO UPDATE SET
+                  topic_name = EXCLUDED.topic_name,
+                  topic_language = EXCLUDED.topic_language,
+                  total_usage_count = EXCLUDED.total_usage_count,
+                  created_at = EXCLUDED.created_at,
+                  status = EXCLUDED.status
+                `,
+                [
+                  topic.topic_id ?? null,
+                  topic.topic_name ?? null,
+                  topic.topic_language ?? null,
+                  topic.total_usage_count ?? 0,
+                  topic.created_at ? new Date(topic.created_at) : new Date(),
+                  topic.status ?? "active"
+                ]
+              );
+            }, 3);
+
+            // Link topic to course
+            await withRetry(async () => {
+              return await client.query(
+                `
+                INSERT INTO public.course_topics (course_id, topic_id)
+                VALUES ($1, $2)
+                ON CONFLICT (course_id, topic_id) DO NOTHING
+                `,
+                [course.course_id, topic.topic_id]
+              );
+            }, 3);
+
+            // Insert topic_skills
+            if (topic.skills && Array.isArray(topic.skills)) {
+              for (const skillCode of topic.skills) {
+                await withRetry(async () => {
+                  return await client.query(
+                    `
+                    INSERT INTO public.topic_skills (topic_id, skill_code)
+                    VALUES ($1, $2)
+                    ON CONFLICT (topic_id, skill_code) DO NOTHING
+                    `,
+                    [topic.topic_id, skillCode]
+                  );
+                }, 3);
+              }
+            }
+
+            // UPSERT contents for topic
+            if (topic.contents && Array.isArray(topic.contents)) {
+              for (const content of topic.contents) {
+                await withRetry(async () => {
+                  return await client.query(
+                    `
+                    INSERT INTO public.contents (
+                      content_id,
+                      topic_id,
+                      content_type,
+                      content_data,
+                      generation_method,
+                      generation_method_id
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    ON CONFLICT (content_id)
+                    DO UPDATE SET
+                      topic_id = EXCLUDED.topic_id,
+                      content_type = EXCLUDED.content_type,
+                      content_data = EXCLUDED.content_data,
+                      generation_method = EXCLUDED.generation_method,
+                      generation_method_id = EXCLUDED.generation_method_id
+                    `,
+                    [
+                      content.content_id ?? null,
+                      topic.topic_id,
+                      content.content_type ?? null,
+                      content.content_data ?? {},
+                      content.generation_methods ?? "manual",
+                      content.generation_method_id ?? null
+                    ]
+                  );
+                }, 3);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Process standalone topics
+    if (data.topics_stand_alone && Array.isArray(data.topics_stand_alone)) {
+      for (const topic of data.topics_stand_alone) {
+        // UPSERT topic
+        await withRetry(async () => {
+          return await client.query(
+            `
+            INSERT INTO public.topics (
+              topic_id,
+              topic_name,
+              topic_language,
+              total_usage_count,
+              created_at,
+              status
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (topic_id)
+            DO UPDATE SET
+              topic_name = EXCLUDED.topic_name,
+              topic_language = EXCLUDED.topic_language,
+              total_usage_count = EXCLUDED.total_usage_count,
+              created_at = EXCLUDED.created_at,
+              status = EXCLUDED.status
+            `,
+            [
+              topic.topic_id ?? null,
+              topic.topic_name ?? null,
+              topic.topic_language ?? null,
+              topic.total_usage_count ?? 0,
+              topic.created_at ? new Date(topic.created_at) : new Date(),
+              topic.status ?? "active"
+            ]
+          );
+        }, 3);
+
+        // Insert topic_skills
+        if (topic.skills && Array.isArray(topic.skills)) {
+          for (const skillCode of topic.skills) {
+            await withRetry(async () => {
+              return await client.query(
+                `
+                INSERT INTO public.topic_skills (topic_id, skill_code)
+                VALUES ($1, $2)
+                ON CONFLICT (topic_id, skill_code) DO NOTHING
+                `,
+                [topic.topic_id, skillCode]
+              );
+            }, 3);
+          }
+        }
+
+        // UPSERT contents for topic
+        if (topic.contents && Array.isArray(topic.contents)) {
+          for (const content of topic.contents) {
+            await withRetry(async () => {
+              return await client.query(
+                `
+                INSERT INTO public.contents (
+                  content_id,
+                  topic_id,
+                  content_type,
+                  content_data,
+                  generation_method,
+                  generation_method_id
+                )
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (content_id)
+                DO UPDATE SET
+                  topic_id = EXCLUDED.topic_id,
+                  content_type = EXCLUDED.content_type,
+                  content_data = EXCLUDED.content_data,
+                  generation_method = EXCLUDED.generation_method,
+                  generation_method_id = EXCLUDED.generation_method_id
+                `,
+                [
+                  content.content_id ?? null,
+                  topic.topic_id,
+                  content.content_type ?? null,
+                  content.content_data ?? {},
+                  content.generation_methods ?? "manual",
+                  content.generation_method_id ?? null
+                ]
+              );
+            }, 3);
+          }
+        }
+      }
+    }
 
     await client.query("COMMIT");
-    console.log(`[Content Studio Cache] ✅ Saved snapshot for ${snapshotDate}`);
+    console.log(`[Content Studio Sync] ✅ Saved normalized snapshot`);
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error("[Content Studio Cache] ❌ Error saving snapshot to DB:", err.message);
+    console.error("[Content Studio Sync] ❌ Error saving snapshot:", err.message);
     throw err;
   } finally {
     client.release();
   }
 }
-
