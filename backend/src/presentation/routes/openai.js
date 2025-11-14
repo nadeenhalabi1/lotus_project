@@ -4,6 +4,7 @@ import reportConclusionsService from '../../application/services/ReportConclusio
 import { getCachedTranscription, saveTranscription } from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
 import { computeChartSignature } from '../../utils/hash.js';
 import * as Repo from '../../infrastructure/repositories/ChartTranscriptionsRepository.js';
+import { getPool, withRetry } from '../../infrastructure/db/pool.js';
 
 console.debug('[AI] openai route loaded. Signature function OK.');
 console.debug('[BOOT] Repo keys ->', Object.keys(Repo));
@@ -208,6 +209,29 @@ router.post('/report-conclusions', async (req, res) => {
     }
 
     const data = await reportConclusionsService.generateReportConclusions(topic, images);
+    
+    // Save conclusions to database (non-blocking side-effect)
+    try {
+      if (process.env.DATABASE_URL && data && data.conclusions && Array.isArray(data.conclusions)) {
+        const pool = getPool();
+        const reportId = req.body.report_id || null; // Optional report_id from request
+        const reportName = topic; // Use topic as report_name
+        
+        await withRetry(async () => {
+          return await pool.query(
+            `INSERT INTO ai_report_conclusions (report_id, report_name, conclusions, generated_at)
+             VALUES ($1, $2, $3, $4)`,
+            [reportId, reportName, data, new Date()]
+          );
+        }, 3);
+        
+        console.log(`[Report Conclusions] ✅ Saved to DB: report_name="${reportName}"`);
+      }
+    } catch (dbError) {
+      // Log error but don't break the API response
+      console.error('[Report Conclusions] ❌ Failed to save to DB:', dbError.message);
+    }
+    
     res.json({ ok: true, source: 'ai', data });
   } catch (err) {
     console.error('OpenAI conclusions failed:', err.message);
