@@ -31,38 +31,11 @@ create table if not exists public.assessments_cache (
 );
 create index if not exists idx_asmt_cache_date on public.assessments_cache(snapshot_date);
 
--- 3) Content Studio — Overview
-create table if not exists public.content_studio_overview_cache (
-  snapshot_date date primary key,
-  total_courses_published int,
-  "AI_generated_content_count" int,
-  trainer_generated_content_count int,
-  mixed_or_collaborative_content_count int,
-  most_used_creator_type text check (lower(most_used_creator_type) in ('trainer','ai','mixed')),
-  ai_lessons_count int,
-  trainer_lessons_count int,
-  collaborative_lessons_count int,
-  ingested_at timestamptz not null default now()
-);
-
--- 3.2) Content Studio — Contents
-create table if not exists public.content_studio_contents_cache (
-  snapshot_date date not null,
-  content_id text not null,
-  course_id text,
-  course_name text,
-  content_name text not null,
-  content_generator text check (lower(content_generator) in ('trainer','ai','mixed')),
-  total_usage_count bigint,
-  trainer_id text,
-  content_type text,
-  lesson_id text,
-  lesson_name text,
-  ingested_at timestamptz not null default now(),
-  primary key (snapshot_date, content_id)
-);
-create index if not exists idx_csc_cache_date on public.content_studio_contents_cache(snapshot_date);
-create index if not exists idx_csc_cache_course on public.content_studio_contents_cache(course_id);
+-- 3) Content Studio — Cleanup old cache tables
+DROP INDEX IF EXISTS idx_csc_cache_date;
+DROP INDEX IF EXISTS idx_csc_cache_course;
+DROP TABLE IF EXISTS public.content_studio_contents_cache;
+DROP TABLE IF EXISTS public.content_studio_overview_cache;
 
 -- 4) Learning Analytics
 create table if not exists public.learning_analytics_cache (
@@ -247,8 +220,6 @@ returns void language plpgsql as $$
 begin
   delete from public.course_builder_cache          where snapshot_date < current_date - 60;
   delete from public.assessments_cache             where snapshot_date < current_date - 60;
-  delete from public.content_studio_overview_cache where snapshot_date < current_date - 60;
-  delete from public.content_studio_contents_cache where snapshot_date < current_date - 60;
   delete from public.learning_analytics_cache      where snapshot_date < current_date - 60;
   delete from public.directory_cache               where snapshot_date < current_date - 60;
 end $$;
@@ -333,8 +304,6 @@ returns void language plpgsql as $$
 begin
   delete from public.course_builder_cache          where snapshot_date < current_date - 60;
   delete from public.assessments_cache             where snapshot_date < current_date - 60;
-  delete from public.content_studio_overview_cache where snapshot_date < current_date - 60;
-  delete from public.content_studio_contents_cache where snapshot_date < current_date - 60;
   delete from public.learning_analytics_cache      where snapshot_date < current_date - 60;
   delete from public.directory_cache               where snapshot_date < current_date - 60;
   -- Note: ai_chart_transcriptions are overwritten on refresh, no expiration needed
@@ -381,3 +350,91 @@ CREATE INDEX IF NOT EXISTS idx_ai_conclusions_generated_at
 
 CREATE INDEX IF NOT EXISTS idx_ai_conclusions_report_name
     ON ai_report_conclusions (report_name);
+
+-- ====================================================
+-- Courses / Topics / Contents normalized schema
+-- ====================================================
+
+-- Status enums
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'course_status') THEN
+        CREATE TYPE course_status AS ENUM ('active', 'archived', 'deleted');
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'topic_status') THEN
+        CREATE TYPE topic_status AS ENUM ('active', 'archived', 'deleted');
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'content_type') THEN
+        CREATE TYPE content_type AS ENUM ('avatar_video', 'text_audio', 'mind_map', 'presentation', 'code');
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'generation_method') THEN
+        CREATE TYPE generation_method AS ENUM ('manual', 'ai_assisted', 'mixed', 'full_ai');
+    END IF;
+END$$;
+
+-- Courses table
+CREATE TABLE IF NOT EXISTS public.courses (
+    course_id        TEXT PRIMARY KEY,                -- e.g. "COURSE-001"
+    course_name      TEXT NOT NULL,
+    course_language  TEXT,
+    trainer_id       TEXT,
+    trainer_name     TEXT,
+    permission_scope TEXT NOT NULL DEFAULT 'all',     -- 'all' or 'orgs'
+    total_usage_count INTEGER DEFAULT 0,
+    created_at        TIMESTAMPTZ NOT NULL,
+    status            course_status NOT NULL DEFAULT 'active'
+);
+
+-- Course permissions: which orgs can access a course
+CREATE TABLE IF NOT EXISTS public.course_org_permissions (
+    course_id TEXT NOT NULL REFERENCES public.courses(course_id) ON DELETE CASCADE,
+    org_uuid  UUID NOT NULL,
+    PRIMARY KEY (course_id, org_uuid)
+);
+
+-- Topics: can be used inside courses or stand-alone
+CREATE TABLE IF NOT EXISTS public.topics (
+    topic_id        TEXT PRIMARY KEY,                -- e.g. "T-101"
+    topic_name      TEXT NOT NULL,
+    topic_language  TEXT,
+    total_usage_count INTEGER DEFAULT 0,
+    created_at        TIMESTAMPTZ NOT NULL,
+    status            topic_status NOT NULL DEFAULT 'active'
+);
+
+-- Relationship: which topics belong to which course
+CREATE TABLE IF NOT EXISTS public.course_topics (
+    course_id  TEXT NOT NULL REFERENCES public.courses(course_id) ON DELETE CASCADE,
+    topic_id   TEXT NOT NULL REFERENCES public.topics(topic_id)   ON DELETE CASCADE,
+    sort_order INTEGER,
+    PRIMARY KEY (course_id, topic_id)
+);
+
+-- Skills per topic
+CREATE TABLE IF NOT EXISTS public.topic_skills (
+    topic_id   TEXT NOT NULL REFERENCES public.topics(topic_id) ON DELETE CASCADE,
+    skill_code TEXT NOT NULL,
+    PRIMARY KEY (topic_id, skill_code)
+);
+
+-- Contents per topic
+CREATE TABLE IF NOT EXISTS public.contents (
+    content_id           TEXT PRIMARY KEY,                                   -- e.g. "C-001"
+    topic_id             TEXT NOT NULL REFERENCES public.topics(topic_id) ON DELETE CASCADE,
+    content_type         content_type NOT NULL,
+    content_data         JSONB NOT NULL,
+    generation_method    generation_method NOT NULL,
+    generation_method_id UUID
+);
