@@ -13,6 +13,8 @@ export class GenerateReportUseCase {
 
   async execute(reportType, options = {}) {
     try {
+      const format = options.format || 'json';
+      
       // 1. Get latest entries from cache (once, shared across all use cases)
       const latestEntries = await this.cacheRepository.getLatestEntries();
       
@@ -29,23 +31,36 @@ export class GenerateReportUseCase {
         generatedAt: new Date().toISOString()
       });
 
-      // 4. Generate AI insights (if available)
+      // 4. Generate AI insights
+      // For JSON: always generate mock insights (fast, no OpenAI call) - provides fallback if reportConclusions fails
+      // For PDF: always generate (may call OpenAI if API key available)
+      // This ensures aiInsights is available as fallback if reportConclusions fails in frontend
       try {
-        const aiInsights = await this.aiService.analyze(reportData, reportType);
-        report.setAIInsights(aiInsights);
+        if (format === 'pdf') {
+          // PDF format: always generate (may call OpenAI)
+          const aiInsights = await this.aiService.analyze(reportData, reportType);
+          report.setAIInsights(aiInsights);
+        } else {
+          // JSON format: always generate mock insights (fast, synchronous, no OpenAI call)
+          // This provides fallback content if reportConclusions fails in frontend
+          const aiInsights = this.aiService.generateMockInsights(reportType, reportData);
+          report.setAIInsights(aiInsights);
+        }
       } catch (error) {
         console.error('AI analysis failed:', error);
         // Continue without AI insights
       }
 
-      // 5. Generate PDF (chartImages, chartNarrations, and reportConclusions will be passed from controller)
-      // Note: chartImages, chartNarrations, and reportConclusions should be passed from the controller
-      const pdf = await this.pdfGenerator.generate(
-        report.toJSON(), 
-        options.chartImages || {},
-        options.chartNarrations || {},
-        options.reportConclusions || null
-      );
+      // 5. Generate PDF (only if format is 'pdf' - skip for JSON to improve performance)
+      let pdf = null;
+      if (format === 'pdf') {
+        pdf = await this.pdfGenerator.generate(
+          report.toJSON(), 
+          options.chartImages || {},
+          options.chartNarrations || {},
+          options.reportConclusions || null
+        );
+      }
 
       return {
         report: report.toJSON(),

@@ -51,8 +51,8 @@ export class ReportsController {
       auditLogger.logReportGeneration(userId, reportType, 'initiated');
 
       const startTime = Date.now();
-      // Pass chartImages, chartNarrations, and reportConclusions to use case
-      const result = await this.generateReportUseCase.execute(reportType, { ...options, chartImages, chartNarrations, reportConclusions });
+      // Pass chartImages, chartNarrations, reportConclusions, and format to use case
+      const result = await this.generateReportUseCase.execute(reportType, { ...options, format, chartImages, chartNarrations, reportConclusions });
       const duration = Date.now() - startTime;
 
       // Log successful report generation
