@@ -13,11 +13,11 @@ export class GenerateReportUseCase {
 
   async execute(reportType, options = {}) {
     try {
-      // 1. Retrieve data from cache
-      const data = await this.cacheRepository.getMultiple('mr:*:*:*');
+      // 1. Get latest entries from cache (once, shared across all use cases)
+      const latestEntries = await this.cacheRepository.getLatestEntries();
       
       // 2. Format report data
-      const reportData = await this.formatReportData(data, reportType, options);
+      const reportData = await this.formatReportData(latestEntries, reportType, options);
 
       // 3. Create report entity
       const report = new Report({
@@ -57,13 +57,10 @@ export class GenerateReportUseCase {
     }
   }
 
-  async formatReportData(data, reportType, options) {
-    // Get latest entries from cache
-    const latestEntries = await this.cacheRepository.getLatestEntries();
-    
-    // Get dashboard charts and combined analytics
-    const dashboardData = await this.getDashboardUseCase.execute();
-    const combinedAnalytics = await this.getCombinedAnalyticsUseCase.execute();
+  async formatReportData(latestEntries, reportType, options) {
+    // Get dashboard charts and combined analytics (pass latestEntries to avoid redundant cache calls)
+    const dashboardData = await this.getDashboardUseCase.execute(latestEntries);
+    const combinedAnalytics = await this.getCombinedAnalyticsUseCase.execute(latestEntries);
     
     // Aggregate and format data based on report type
     const aggregated = this.aggregateData(latestEntries, reportType);

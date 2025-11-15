@@ -10,10 +10,12 @@ export class GetCombinedAnalyticsUseCase {
     this.cacheRepository = cacheRepository;
   }
 
-  async execute() {
+  async execute(latestEntries = null) {
     try {
-      // Get all latest entries from cache
-      const latestEntries = await this.cacheRepository.getLatestEntries();
+      // Use provided latestEntries if available, otherwise fetch from cache
+      if (!latestEntries) {
+        latestEntries = await this.cacheRepository.getLatestEntries();
+      }
       
       if (latestEntries.length === 0) {
         return { charts: [] };

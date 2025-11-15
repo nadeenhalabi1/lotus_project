@@ -67,9 +67,12 @@ export class GetDashboardUseCase {
     this.cacheRepository = cacheRepository;
   }
 
-  async execute() {
+  async execute(latestEntries = null) {
     try {
-      const latestEntries = await this.cacheRepository.getLatestEntries();
+      // Use provided latestEntries if available, otherwise fetch from cache
+      if (!latestEntries) {
+        latestEntries = await this.cacheRepository.getLatestEntries();
+      }
 
       console.log('GetDashboardUseCase - latestEntries count:', latestEntries.length);
       if (latestEntries.length > 0) {
