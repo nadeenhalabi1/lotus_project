@@ -19,7 +19,7 @@ const Header = () => {
   const showLogo = logo && !logoError;
 
   return (
-    <header className="bg-white dark:bg-neutral-800 shadow-sm fixed w-full top-0 z-fixed border-b border-neutral-200 dark:border-neutral-700" style={{ height: '64px' }}>
+    <header className="bg-white dark:bg-neutral-900 shadow-sm fixed w-full top-0 z-fixed border-b border-neutral-200 dark:border-neutral-700" style={{ height: '64px' }}>
       <div className="container mx-auto px-6">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center gap-8">
