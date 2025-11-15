@@ -62,7 +62,7 @@ const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
 
   return (
     <div
-      className="card cursor-pointer hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 border-2 border-transparent hover:border-opacity-50"
+      className="card cursor-pointer hover:shadow-brand-hover hover:scale-[1.02] transition-all duration-normal border-2 border-transparent hover:border-opacity-50"
       data-chart-id={chart.id}
       style={{
         borderColor: `${colorScheme.primary}40`,
@@ -83,18 +83,18 @@ const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex-1">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-0.5">
+          <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-50 mb-0.5">
             {chart.title}
           </h3>
           {chart.subtitle && (
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
               {chart.subtitle}
             </p>
           )}
         </div>
         <div className="flex items-center gap-2">
           {isStale && (
-            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 shadow-sm">
+            <span className="inline-flex items-center rounded-full bg-warning-100 px-2 py-1 text-xs font-semibold text-warning-800 dark:bg-warning-900/30 dark:text-warning-200 shadow-sm">
               Stale Data
             </span>
           )}
@@ -108,13 +108,13 @@ const ChartCard = ({ chart, onClick, isStale = false, lastSuccessful }) => {
       </div>
       <div className="h-[500px] mb-2">{renderChart()}</div>
       {chart.description && (
-        <p className="mt-2 text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+        <p className="mt-2 text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
           {chart.description}
         </p>
       )}
-      <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-        <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-          Last updated: <span className="text-gray-700 dark:text-gray-300">{formatDateTime(lastUpdated)}</span>
+      <div className="mt-2 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+        <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+          Last updated: <span className="text-neutral-700 dark:text-neutral-300">{formatDateTime(lastUpdated)}</span>
         </p>
       </div>
     </div>

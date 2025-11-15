@@ -338,7 +338,7 @@ const ChartDetailPage = () => {
     <div className="space-y-6">
       <button
         onClick={() => navigate('/dashboard')}
-        className="flex items-center space-x-2 text-emerald-600 hover:text-emerald-700"
+        className="flex items-center gap-2 text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300"
       >
         <ArrowLeft className="h-5 w-5" />
         <span>Back to Dashboard</span>
@@ -355,16 +355,16 @@ const ChartDetailPage = () => {
       >
         <div className="flex items-center justify-between mb-6">
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+            <h1 className="text-4xl font-bold text-neutral-900 dark:text-neutral-50 mb-2">
               {chart.title}
             </h1>
             {chart.subtitle && (
-              <p className="text-lg font-medium text-gray-500 dark:text-gray-400">
+              <p className="text-lg font-medium text-neutral-500 dark:text-neutral-400">
                 {chart.subtitle}
               </p>
             )}
             {chart.description && (
-              <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-2">
                 {chart.description}
               </p>
             )}
@@ -384,7 +384,7 @@ const ChartDetailPage = () => {
                 <Filter className="h-5 w-5" />
                 <span>Filter Courses</span>
                 {chart.metadata?.filtered && (
-                  <span className="ml-1 px-2 py-0.5 text-xs bg-emerald-500 text-white rounded-full">
+                  <span className="ml-1 px-2 py-0.5 text-xs bg-primary-700 text-white rounded-full">
                     {chart.metadata?.courseCount || selectedCourseIds.length}
                   </span>
                 )}
@@ -413,14 +413,14 @@ const ChartDetailPage = () => {
 
         {/* Course Filter Panel */}
         {isCourseChart && showCourseFilter && (
-          <div className="mb-6 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="mb-6 p-6 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">
                 Select Courses to Display
               </h3>
               <button
                 onClick={() => setShowCourseFilter(false)}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                className="text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 transition-colors duration-fast"
                 aria-label="Close filter"
               >
                 <X className="h-5 w-5" />
@@ -430,40 +430,40 @@ const ChartDetailPage = () => {
             <div className="mb-4 flex items-center gap-2">
               <button
                 onClick={selectAllCourses}
-                className="text-sm text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium"
+                className="text-sm text-primary-700 hover:text-primary-800 dark:text-primary-400 dark:hover:text-primary-300 font-medium"
               >
                 Select All
               </button>
-              <span className="text-gray-400">|</span>
+              <span className="text-neutral-400">|</span>
               <button
                 onClick={deselectAllCourses}
-                className="text-sm text-gray-600 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 font-medium"
+                className="text-sm text-neutral-600 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300 font-medium"
               >
                 Deselect All
               </button>
-              <span className="text-sm text-gray-500 dark:text-gray-400 ml-auto">
+              <span className="text-sm text-neutral-500 dark:text-neutral-400 ml-auto">
                 {selectedCourseIds.length} of {courses.length} selected
               </span>
             </div>
 
-            <div className="max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 p-4">
+            <div className="max-h-60 overflow-y-auto border border-neutral-200 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-900 p-4">
               <div className="space-y-2">
                 {courses.map(course => (
                   <label
                     key={course.id}
-                    className="flex items-start space-x-3 p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded cursor-pointer"
+                    className="flex items-start gap-3 p-2 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded cursor-pointer"
                   >
                     <input
                       type="checkbox"
                       checked={selectedCourseIds.includes(course.id)}
                       onChange={() => toggleCourseSelection(course.id)}
-                      className="mt-1 h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+                      className="mt-1 h-4 w-4 text-primary-700 focus:ring-primary-500 border-neutral-300 rounded"
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                      <div className="text-sm font-medium text-neutral-900 dark:text-neutral-50">
                         {course.name}
                       </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                         {course.topic} • {course.duration}h • {course.totalEnrollments} enrollments
                       </div>
                     </div>
@@ -477,7 +477,7 @@ const ChartDetailPage = () => {
                 <button
                   onClick={handleClearFilter}
                   disabled={filtering}
-                  className="text-sm text-gray-600 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 font-medium"
+                  className="text-sm text-neutral-600 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300 font-medium"
                 >
                   Clear Filter
                 </button>

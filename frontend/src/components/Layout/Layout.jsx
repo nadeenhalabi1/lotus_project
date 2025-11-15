@@ -5,9 +5,9 @@ const Layout = ({ children }) => {
   const { theme } = useTheme();
 
   return (
-    <div className={`min-h-screen bg-gray-50 dark:bg-gray-700 ${theme === 'dark' ? 'dark' : ''}`}>
+    <div className={`min-h-screen bg-neutral-50 dark:bg-neutral-900 ${theme === 'dark' ? 'dark' : ''}`}>
       <Header />
-      <main className="container mx-auto px-4 pt-24 pb-8">
+      <main className="container mx-auto px-6 pt-24 pb-8">
         {children}
       </main>
     </div>

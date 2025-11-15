@@ -19,11 +19,11 @@ const Header = () => {
   const showLogo = logo && !logoError;
 
   return (
-    <header className="bg-white dark:bg-gray-900 shadow-md fixed w-full top-0 z-50">
-      <div className="container mx-auto px-4">
+    <header className="bg-white dark:bg-neutral-800 shadow-sm fixed w-full top-0 z-fixed border-b border-neutral-200 dark:border-neutral-700" style={{ height: '64px' }}>
+      <div className="container mx-auto px-6">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center space-x-8">
-            <Link to="/dashboard" className="flex items-center space-x-2">
+          <div className="flex items-center gap-8">
+            <Link to="/dashboard" className="flex items-center gap-2">
               {showLogo ? (
                 <img 
                   src={logo} 
@@ -35,30 +35,30 @@ const Header = () => {
                   }}
                 />
               ) : (
-                <BarChart3 className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+                <BarChart3 className="h-8 w-8 text-primary-700 dark:text-primary-400" />
               )}
-              <span className="text-xl font-bold text-gray-900 dark:text-white">
+              <span className="text-xl font-semibold text-neutral-900 dark:text-neutral-50">
                 Management reporting
               </span>
             </Link>
             
-            <nav className="hidden md:flex space-x-4">
+            <nav className="hidden md:flex gap-4">
               <Link
                 to="/dashboard"
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-fast ${
                   isActive('/dashboard')
-                    ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
+                    : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700'
                 }`}
               >
                 Dashboard
               </Link>
               <Link
                 to="/reports"
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-fast ${
                   isActive('/reports')
-                    ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
+                    : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700'
                 }`}
               >
                 Reports
@@ -66,10 +66,10 @@ const Header = () => {
             </nav>
           </div>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-4">
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              className="p-2 rounded-md text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-all duration-fast"
               aria-label="Toggle theme"
             >
               {theme === 'dark' ? (

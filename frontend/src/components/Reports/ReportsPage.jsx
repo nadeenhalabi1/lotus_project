@@ -256,11 +256,11 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
       className="card"
       data-chart-id={chartId}
     >
-      <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+      <h4 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 mb-2">
         {chart.title}
       </h4>
       {chart.subtitle && (
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+        <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
           {chart.subtitle}
         </p>
       )}
@@ -272,14 +272,14 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
         {renderChart(chart)}
       </div>
       {chart.description && (
-        <p className="text-sm text-gray-600 dark:text-gray-400 mt-4">
+        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-4">
           {chart.description}
         </p>
       )}
       
       {/* Chart Summary (AI-Generated) */}
-      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-        <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
+      <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+        <h4 className="font-semibold text-neutral-900 dark:text-neutral-50 mb-2">
           Chart Summary (AI-Generated)
         </h4>
         {(() => {
@@ -296,19 +296,19 @@ const ChartWithNarration = ({ chart, index, reportTitle, renderChart, onNarratio
           // Show transcription if it exists, otherwise show loading or placeholder
           if (hasText) {
             return (
-              <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-sans bg-gray-50 dark:bg-gray-800 p-3 rounded-lg">
+              <div className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap font-sans bg-neutral-50 dark:bg-neutral-800 p-3 rounded-lg">
                 {transcriptionText}
               </div>
             );
           } else if (loading) {
             return (
-              <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 italic">
                 Analyzing chart...
               </p>
             );
           } else {
             return (
-              <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 italic">
                 Narration will appear here...
               </p>
             );
@@ -564,7 +564,7 @@ const ReportsPage = () => {
 
   const renderChart = (chart) => {
     if (!chart || !chart.data || !Array.isArray(chart.data) || chart.data.length === 0) {
-      return <div className="flex items-center justify-center h-64 text-gray-500 dark:text-gray-400">No chart data</div>;
+      return <div className="flex items-center justify-center h-64 text-neutral-500 dark:text-neutral-400">No chart data</div>;
     }
 
     const colorScheme = chart.metadata?.colorScheme || {
@@ -600,15 +600,15 @@ const ReportsPage = () => {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Reports</h1>
+      <h1 className="text-4xl font-bold text-neutral-900 dark:text-neutral-50">Reports</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {REPORTS.map((report) => (
           <div key={report.id} className="card">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            <h3 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50 mb-2">
               {report.name}
             </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
               {report.description}
             </p>
             <button
@@ -635,10 +635,10 @@ const ReportsPage = () => {
           <div className="card">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                <h2 className="text-4xl font-bold text-neutral-900 dark:text-neutral-50 mb-2">
                   {reportData.executiveSummary?.title || 'Generated Report'}
                 </h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
                   Generated on {new Date(reportData.generatedAt).toLocaleString()}
                 </p>
               </div>
@@ -655,16 +655,16 @@ const ReportsPage = () => {
             {/* Executive Summary */}
             {reportData.executiveSummary && (
               <div className="mb-6">
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+                <h3 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50 mb-4">
                   Executive Summary
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                   {Object.entries(reportData.executiveSummary.keyMetrics || {}).slice(0, 8).map(([key, value]) => (
-                    <div key={key} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
-                      <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                    <div key={key} className="bg-neutral-50 dark:bg-neutral-800 p-4 rounded-lg">
+                      <div className="text-sm text-neutral-600 dark:text-neutral-400 mb-1">
                         {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
                       </div>
-                      <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                      <div className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">
                         {typeof value === 'number' ? value.toLocaleString() : value}
                       </div>
                     </div>
@@ -675,37 +675,37 @@ const ReportsPage = () => {
 
             {/* AI Insights & Conclusions */}
             <div className="mb-6">
-              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+              <h3 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50 mb-4">
                 AI Insights & Conclusions
               </h3>
               {loadingConclusions ? (
                 <div className="flex items-center justify-center py-8">
                   <LoadingSpinner />
-                  <span className="ml-3 text-gray-600 dark:text-gray-400">Generating conclusions...</span>
+                  <span className="ml-3 text-neutral-600 dark:text-neutral-400">Generating conclusions...</span>
                 </div>
               ) : reportConclusions ? (
                 <>
                   {reportConclusions.source === 'rollback' && (
-                    <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border-l-4 border-amber-500 rounded">
-                      <p className="text-xs text-amber-800 dark:text-amber-200">
+                    <div className="mb-4 p-3 bg-warning-50 dark:bg-warning-900/20 border-l-4 border-warning-500 rounded-lg">
+                      <p className="text-xs text-warning-800 dark:text-warning-200">
                         ⚠️ Using fallback content due to temporary AI connection issue.
                       </p>
                     </div>
                   )}
                   <ul className="space-y-3">
                     {reportConclusions.data.conclusions.map((conclusion, index) => (
-                      <li key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-white dark:bg-gray-800">
+                      <li key={index} className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-4 bg-white dark:bg-neutral-800">
                         <div className="flex items-start justify-between mb-2">
-                          <strong className="text-gray-900 dark:text-white font-semibold">
+                          <strong className="text-neutral-900 dark:text-neutral-50 font-semibold">
                             {index + 1}. {conclusion.statement}
                           </strong>
                           {conclusion.confidence > 0 && (
-                            <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                            <span className="ml-2 text-xs text-neutral-500 dark:text-neutral-400">
                               Confidence: {(conclusion.confidence * 100).toFixed(0)}%
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-300 opacity-80 mt-1">
+                        <p className="text-sm text-neutral-600 dark:text-neutral-300 opacity-80 mt-1">
                           {conclusion.rationale}
                         </p>
                       </li>
@@ -713,7 +713,7 @@ const ReportsPage = () => {
                   </ul>
                 </>
               ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 italic">
                   Conclusions will appear here once charts are analyzed...
                 </p>
               )}
@@ -722,35 +722,35 @@ const ReportsPage = () => {
             {/* AI Insights - Only show as rollback if OpenAI conclusions failed */}
             {reportData.aiInsights && reportConclusions && reportConclusions.source === 'rollback' && (
               <div className="mb-6 space-y-4">
-                <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
+                <h3 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">
                   Chart Summary (AI-Generated)
                 </h3>
                 
                 {reportData.aiInsights.observations && (
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border-l-4 border-blue-500">
-                    <h4 className="font-semibold text-blue-900 dark:text-blue-200 mb-2">Key Observations</h4>
-                    <p className="text-blue-800 dark:text-blue-300">{reportData.aiInsights.observations}</p>
+                  <div className="bg-info-50 dark:bg-info-900/20 p-4 rounded-lg border-l-4 border-info-500">
+                    <h4 className="font-semibold text-info-900 dark:text-info-200 mb-2">Key Observations</h4>
+                    <p className="text-info-800 dark:text-info-300">{reportData.aiInsights.observations}</p>
                   </div>
                 )}
                 
                 {reportData.aiInsights.trends && (
-                  <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border-l-4 border-green-500">
-                    <h4 className="font-semibold text-green-900 dark:text-green-200 mb-2">Trends</h4>
-                    <p className="text-green-800 dark:text-green-300">{reportData.aiInsights.trends}</p>
+                  <div className="bg-success-50 dark:bg-success-900/20 p-4 rounded-lg border-l-4 border-success-500">
+                    <h4 className="font-semibold text-success-900 dark:text-success-200 mb-2">Trends</h4>
+                    <p className="text-success-800 dark:text-success-300">{reportData.aiInsights.trends}</p>
                   </div>
                 )}
                 
                 {reportData.aiInsights.anomalies && (
-                  <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border-l-4 border-amber-500">
-                    <h4 className="font-semibold text-amber-900 dark:text-amber-200 mb-2">Anomalies</h4>
-                    <p className="text-amber-800 dark:text-amber-300">{reportData.aiInsights.anomalies}</p>
+                  <div className="bg-warning-50 dark:bg-warning-900/20 p-4 rounded-lg border-l-4 border-warning-500">
+                    <h4 className="font-semibold text-warning-900 dark:text-warning-200 mb-2">Anomalies</h4>
+                    <p className="text-warning-800 dark:text-warning-300">{reportData.aiInsights.anomalies}</p>
                   </div>
                 )}
                 
                 {reportData.aiInsights.recommendations && (
-                  <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border-l-4 border-purple-500">
-                    <h4 className="font-semibold text-purple-900 dark:text-purple-200 mb-2">Recommendations</h4>
-                    <p className="text-purple-800 dark:text-purple-300">{reportData.aiInsights.recommendations}</p>
+                  <div className="bg-primary-50 dark:bg-primary-900/20 p-4 rounded-lg border-l-4 border-primary-500">
+                    <h4 className="font-semibold text-primary-900 dark:text-primary-200 mb-2">Recommendations</h4>
+                    <p className="text-primary-800 dark:text-primary-300">{reportData.aiInsights.recommendations}</p>
                   </div>
                 )}
               </div>
@@ -760,7 +760,7 @@ const ReportsPage = () => {
           {/* Charts Section */}
           {reportData.charts && reportData.charts.length > 0 && (
             <div className="space-y-6">
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+              <h3 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50">
                 Supporting Charts
               </h3>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

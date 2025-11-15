@@ -55,13 +55,13 @@ const BOXSidebar = ({ isOpen, onClose, onChartClick }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed right-0 top-20 h-[calc(100vh-5rem)] w-80 bg-white dark:bg-gray-800 shadow-lg z-40 flex flex-col">
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+    <div className="fixed right-0 top-20 h-[calc(100vh-5rem)] w-80 bg-white dark:bg-neutral-800 shadow-lg z-40 flex flex-col">
+      <div className="p-4 border-b border-neutral-200 dark:border-neutral-700">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">BOX</h2>
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-50">BOX</h2>
           <button
             onClick={onClose}
-            className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="p-1 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors duration-fast"
             aria-label="Close BOX"
           >
             <X className="h-5 w-5" />
@@ -69,13 +69,13 @@ const BOXSidebar = ({ isOpen, onClose, onChartClick }) => {
         </div>
 
         <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-neutral-400" />
           <input
             type="text"
             placeholder="Search charts..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="w-full pl-10 pr-4 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-50"
           />
         </div>
 
@@ -84,10 +84,10 @@ const BOXSidebar = ({ isOpen, onClose, onChartClick }) => {
             <button
               key={category}
               onClick={() => setSelectedCategory(category)}
-              className={`px-3 py-1 rounded-md text-sm ${
+              className={`px-3 py-1 rounded-md text-sm transition-colors duration-fast ${
                 selectedCategory === category
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                  ? 'bg-primary-700 text-white'
+                  : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300'
               }`}
             >
               {category.charAt(0).toUpperCase() + category.slice(1)}
@@ -100,7 +100,7 @@ const BOXSidebar = ({ isOpen, onClose, onChartClick }) => {
         {loading ? (
           <LoadingSpinner />
         ) : filteredCharts.length === 0 ? (
-          <p className="text-gray-500 dark:text-gray-400 text-center">No charts found</p>
+          <p className="text-neutral-500 dark:text-neutral-400 text-center">No charts found</p>
         ) : (
           <BOXChartList charts={filteredCharts} onChartClick={onChartClick} />
         )}

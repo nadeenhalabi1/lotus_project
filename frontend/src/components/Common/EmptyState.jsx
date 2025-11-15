@@ -2,7 +2,7 @@ const EmptyState = ({ message = 'No data available' }) => {
   return (
     <div className="card max-w-md mx-auto mt-8">
       <div className="text-center">
-        <div className="text-gray-400 mb-4">
+        <div className="text-neutral-400 dark:text-neutral-500 mb-4">
           <svg
             className="h-12 w-12 mx-auto"
             fill="none"
@@ -17,7 +17,7 @@ const EmptyState = ({ message = 'No data available' }) => {
             />
           </svg>
         </div>
-        <p className="text-gray-600 dark:text-gray-400">{message}</p>
+        <p className="text-neutral-600 dark:text-neutral-400">{message}</p>
       </div>
     </div>
   );

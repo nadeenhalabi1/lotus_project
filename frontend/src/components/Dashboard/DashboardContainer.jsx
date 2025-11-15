@@ -122,7 +122,7 @@ const DashboardContainer = () => {
     return (
       <div>
         <ErrorMessage message={error} onRetry={refresh} />
-        <div className="mt-4 text-center text-sm text-gray-500">
+        <div className="mt-4 text-center text-sm text-neutral-500">
           <p>Check Console (F12) for detailed error information</p>
           <p>API URL: {import.meta.env.VITE_API_URL || 'Not set - using localhost'}</p>
         </div>

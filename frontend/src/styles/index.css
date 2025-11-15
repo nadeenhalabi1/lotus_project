@@ -4,22 +4,51 @@
 
 @layer base {
   body {
-    @apply bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100;
+    @apply bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-50 font-primary;
   }
 }
 
 @layer components {
+  /* Primary Button */
   .btn-primary {
-    @apply bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-4 rounded-lg transition-colors;
+    @apply bg-primary-700 hover:bg-primary-800 active:bg-primary-900 disabled:bg-neutral-300 dark:disabled:bg-neutral-600 
+           text-white disabled:text-neutral-500 dark:disabled:text-neutral-500
+           font-medium rounded-button shadow-md hover:shadow-lg
+           transition-all duration-fast ease-out
+           border-none;
+    padding: 12px 24px;
   }
   
+  .btn-primary:hover:not(:disabled) {
+    box-shadow: 0 10px 15px -3px rgba(6, 95, 70, 0.3), 0 4px 6px -2px rgba(6, 95, 70, 0.2);
+  }
+  
+  /* Secondary Button */
   .btn-secondary {
-    @apply bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100 font-medium py-2 px-4 rounded-lg transition-colors;
+    @apply bg-neutral-100 hover:bg-neutral-200 active:bg-neutral-300 disabled:bg-neutral-50 dark:disabled:bg-transparent
+           dark:bg-transparent dark:hover:bg-primary-600 dark:active:bg-primary-700
+           text-neutral-900 dark:text-neutral-50 disabled:text-neutral-500 dark:disabled:text-neutral-500
+           font-medium rounded-button
+           transition-all duration-fast ease-out
+           border border-neutral-300 dark:border-neutral-500 dark:hover:border-transparent;
+    padding: 12px 24px;
   }
   
+  .btn-secondary:hover:not(:disabled) {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  /* Card */
   .card {
-    @apply bg-white dark:bg-gray-800 rounded-lg shadow-md p-3;
+    @apply bg-white dark:bg-neutral-800 rounded-card shadow-lg p-6
+           border border-neutral-200 dark:border-neutral-700;
+  }
+  
+  .card:hover {
+    box-shadow: 0 20px 60px rgba(6, 95, 70, 0.2);
+  }
+  
+  .dark .card:hover {
+    box-shadow: 0 20px 60px rgba(13, 148, 136, 0.3);
   }
 }
-
-
