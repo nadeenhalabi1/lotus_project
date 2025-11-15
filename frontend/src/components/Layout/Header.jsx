@@ -19,16 +19,16 @@ const Header = () => {
   const showLogo = logo && !logoError;
 
   return (
-    <header className="bg-white dark:bg-neutral-900 shadow-sm fixed w-full top-0 z-fixed border-b border-neutral-200 dark:border-neutral-700" style={{ height: '64px' }}>
+    <header className="bg-white dark:bg-neutral-900 shadow-sm fixed w-full top-0 z-fixed border-b border-neutral-200 dark:border-neutral-700 h-20">
       <div className="container mx-auto px-6">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-20">
           <div className="flex items-center gap-8">
             <Link to="/dashboard" className="flex items-center gap-2">
               {showLogo ? (
                 <img 
                   src={logo} 
                   alt="Management Reporting Logo" 
-                  className="h-12 w-auto"
+                  className="h-20 w-auto"
                   onError={() => {
                     // If image fails to load, show fallback icon
                     setLogoError(true);
