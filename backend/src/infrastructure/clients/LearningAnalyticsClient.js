@@ -9,7 +9,29 @@ if (!LEARNING_ANALYTICS_API_URL) {
 
 /**
  * קורא למיקרוסרביס Learning Analytics, ושולח לו payload ריק שימולא.
- * מצופה לחזור JSON במבנה עם כל שדות ה-learning analytics.
+ * מצופה לחזור JSON במבנה:
+ * {
+ *   version: string,
+ *   aggregated_statistics: {
+ *     period: string,
+ *     date_range: { start_date, end_date },
+ *     metrics: {
+ *       learners: {...},
+ *       courses: {...},
+ *       content: {...},
+ *       skills_competencies: {...},
+ *       assessments: {...},
+ *       engagement: {...}
+ *     },
+ *     category_breakdowns: {
+ *       by_competency_level: {...},
+ *       by_feedback_rating: {...},
+ *       by_course_status: {...}
+ *     },
+ *     calculated_at: string
+ *   }
+ * }
+ * הנתונים נשמרים בטבלאות מנורמלות: learning_analytics_snapshot + טבלאות metrics ו-breakdowns.
  */
 export async function fetchLearningAnalyticsFromService() {
   const payloadObject = {
