@@ -3,20 +3,25 @@ import { fetchDirectoryDataFromService } from "../clients/DirectoryClient.js";
 import { saveDirectorySnapshot } from "../db/directoryCache.js";
 
 /**
- * הפעלת ה-cron job של Directory sync
- * רץ כל יום ב-06:00 בבוקר, לפי אזור זמן Asia/Jerusalem
+ * Starts the cron job for Directory sync.
+ * Runs every day at 06:00 (Asia/Jerusalem).
  */
 export function startDirectoryScheduler() {
-  // ריצה כל יום ב-06:00 בבוקר, לפי אזור זמן Asia/Jerusalem
+  // Run every day at 06:00 AM, timezone Asia/Jerusalem
   cron.schedule(
     "0 6 * * *",
     async () => {
       console.log("[CRON] Starting Directory sync at", new Date().toISOString());
 
       try {
-        const data = await fetchDirectoryDataFromService();
-        await saveDirectorySnapshot(data);
-        console.log("[CRON] Directory sync finished successfully");
+        const companies = await fetchDirectoryDataFromService();
+
+        if (!Array.isArray(companies) || companies.length === 0) {
+          console.warn("[CRON] Directory sync returned an empty or non-array response");
+        } else {
+          await saveDirectorySnapshot(companies);
+          console.log("[CRON] Directory sync finished successfully");
+        }
       } catch (err) {
         console.error("[CRON] Directory sync failed:", err.message);
       }
@@ -25,7 +30,8 @@ export function startDirectoryScheduler() {
       timezone: "Asia/Jerusalem"
     }
   );
-  
-  console.log("[CRON] Directory scheduler initialized - will run daily at 06:00 (Asia/Jerusalem)");
-}
 
+  console.log(
+    "[CRON] Directory scheduler initialized - will run daily at 06:00 (Asia/Jerusalem)"
+  );
+}

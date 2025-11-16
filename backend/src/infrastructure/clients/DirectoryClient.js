@@ -1,5 +1,4 @@
 import axios from "axios";
-import qs from "qs";
 
 const DIRECTORY_API_URL = process.env.DIRECTORY_API_URL;
 
@@ -8,52 +7,92 @@ if (!DIRECTORY_API_URL) {
 }
 
 /**
- * קורא למיקרוסרביס Directory, ושולח לו payload ריק שימולא.
- * מצופה לחזור JSON במבנה עם כל שדות החברה.
+ * Calls the Directory microservice.
+ *
+ * NEW REQUEST FORMAT:
+ * {
+ *   requester_name: "ManagementReporting",
+ *   payload: {},
+ *   response: {
+ *     companies: [
+ *       {
+ *         company_id: null,
+ *         company_name: "",
+ *         industry: "",
+ *         company_size: "",
+ *         date_registered: "",
+ *         primary_hr_contact: "",
+ *         approval_policy: "",
+ *         decision_maker: "",
+ *         kpis: null,
+ *         max_test_attempts: null,
+ *         website_url: "",
+ *         verification_status: "",
+ *         hierarchy: null
+ *       }
+ *     ]
+ *   }
+ * }
+ *
+ * The Directory service will fill "response.companies"
+ * and return ONLY the response object as a JSON string.
+ *
+ * This function returns an array of company objects.
  */
 export async function fetchDirectoryDataFromService() {
-  const payloadObject = {
-    company_id: null,
-    company_name: "",
-    industry: "",
-    company_size: "",
-    date_registered: "",
-    primary_hr_contact: "",
-    approval_policy: "",
-    decision_maker: "",
-    kpis: null,
-    max_test_attempts: null,
-    website_url: "",
-    verification_status: "",
-    hierarchy: null
+  const requestObject = {
+    requester_name: "ManagementReporting",
+    payload: {},
+    response: {
+      companies: [
+        {
+          company_id: null,
+          company_name: "",
+          industry: "",
+          company_size: "",
+          date_registered: "",
+          primary_hr_contact: "",
+          approval_policy: "",
+          decision_maker: "",
+          kpis: null,
+          max_test_attempts: null,
+          website_url: "",
+          verification_status: "",
+          hierarchy: null
+        }
+      ]
+    }
   };
 
-  const payloadString = JSON.stringify(payloadObject);
-
-  const body = qs.stringify({
-    serviceName: "ManagementReporting",
-    payload: payloadString
-  });
-
   try {
-    const response = await axios.post(DIRECTORY_API_URL, body, {
+    const requestJsonString = JSON.stringify(requestObject);
+
+    const response = await axios.post(DIRECTORY_API_URL, requestJsonString, {
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Content-Type": "application/json"
       },
       timeout: 30000
     });
 
-    const { payload } = response.data || {};
-
-    if (!payload || typeof payload !== "string") {
-      throw new Error("Invalid payload returned from Directory service");
+    if (!response || typeof response.data === "undefined" || response.data === null) {
+      throw new Error("Empty response from Directory service");
     }
 
-    const filledPayload = JSON.parse(payload);
-    return filledPayload;
+    // Directory returns ONLY the "response" object as a JSON string
+    const parsed =
+      typeof response.data === "string" ? JSON.parse(response.data) : response.data;
+
+    if (!parsed.companies || !Array.isArray(parsed.companies)) {
+      throw new Error("Expected Directory response to contain { companies: [...] }");
+    }
+
+    console.log(
+      `[Directory Client] Received ${parsed.companies.length} companies from Directory service`
+    );
+
+    return parsed.companies;
   } catch (err) {
     console.error("Error calling Directory service:", err.message);
     throw err;
   }
 }
-
