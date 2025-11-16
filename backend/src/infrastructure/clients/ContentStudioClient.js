@@ -1,5 +1,4 @@
 import axios from "axios";
-import qs from "qs";
 
 const CONTENT_STUDIO_API_URL = process.env.CONTENT_STUDIO_API_URL;
 
@@ -7,35 +6,50 @@ if (!CONTENT_STUDIO_API_URL) {
   console.error("Missing CONTENT_STUDIO_API_URL env variable");
 }
 
+/**
+ * Fetches content metrics from the Content Studio microservice.
+ *
+ * NEW REQUEST FORMAT (similar to Assessment / CourseBuilder):
+ *
+ * {
+ *   requester_name: "ManagementReporting",
+ *   payload: {},
+ *   response: {
+ *     courses: [],
+ *     topics_stand_alone: []
+ *   }
+ * }
+ *
+ * The Content Studio service fills the "response" structure and returns
+ * a nested legacy payload that we still parse in two levels:
+ * - response.data.payload -> stringified level1
+ * - level1.payload -> stringified inner { courses, topics_stand_alone }
+ */
 export async function fetchContentMetricsFromContentStudio() {
-  // 1. Inner payload structure
-  const innerPayload = {
-    courses: [],
-    topics_stand_alone: []
+  // 1. New unified request format
+  const requestObject = {
+    requester_name: "ManagementReporting",
+    payload: {},
+    response: {
+      courses: [],
+      topics_stand_alone: []
+    }
   };
-
-  // 2. First wrapper level
-  const wrapper = {
-    serviceName: "ManagementReporting",
-    payload: JSON.stringify(innerPayload)
-  };
-
-  // 3. Second wrapper level (for qs.stringify)
-  const payloadString = JSON.stringify(wrapper);
-
-  const body = qs.stringify({
-    payload: payloadString
-  });
 
   try {
-    const response = await axios.post(CONTENT_STUDIO_API_URL, body, {
+    // 2. Stringify entire request object to JSON string
+    const requestJsonString = JSON.stringify(requestObject);
+
+    // 3. Send as raw JSON string (application/json)
+    const response = await axios.post(CONTENT_STUDIO_API_URL, requestJsonString, {
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Content-Type": "application/json"
       },
       timeout: 30000
     });
 
-    // 4. Parse response in two levels
+    // 4. From here down: keep the same nested parsing logic as before
+
     const { payload } = response.data || {};
 
     if (!payload || typeof payload !== "string") {
@@ -66,4 +80,3 @@ export async function fetchContentMetricsFromContentStudio() {
     throw err;
   }
 }
-
