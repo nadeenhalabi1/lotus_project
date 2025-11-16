@@ -54,7 +54,7 @@ DROP INDEX IF EXISTS idx_la_cache_period;
 DROP TABLE IF EXISTS public.learning_analytics_cache;
 
 -- 4.1) Snapshot table (main anchor table)
-CREATE TABLE public.learning_analytics_snapshot (
+CREATE TABLE IF NOT EXISTS public.learning_analytics_snapshot (
   id              BIGSERIAL PRIMARY KEY,
   snapshot_date   date NOT NULL,
   period          text NOT NULL,
@@ -66,9 +66,17 @@ CREATE TABLE public.learning_analytics_snapshot (
   raw_payload     jsonb
 );
 
-ALTER TABLE public.learning_analytics_snapshot
-  ADD CONSTRAINT learning_analytics_snapshot_period_check
-  CHECK (period = ANY (ARRAY['daily', 'weekly', 'monthly']));
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint 
+    WHERE conname = 'learning_analytics_snapshot_period_check'
+  ) THEN
+    ALTER TABLE public.learning_analytics_snapshot
+      ADD CONSTRAINT learning_analytics_snapshot_period_check
+      CHECK (period = ANY (ARRAY['daily', 'weekly', 'monthly']));
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_la_snapshot_date
   ON public.learning_analytics_snapshot (snapshot_date);
@@ -78,7 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_la_snapshot_period
 
 -- 4.2) Metrics tables (one-to-one with snapshot)
 -- Learners
-CREATE TABLE public.learning_analytics_learners (
+CREATE TABLE IF NOT EXISTS public.learning_analytics_learners (
   snapshot_id         bigint PRIMARY KEY
     REFERENCES public.learning_analytics_snapshot(id) ON DELETE CASCADE,
   total_learners      integer NOT NULL,
@@ -87,7 +95,7 @@ CREATE TABLE public.learning_analytics_learners (
 );
 
 -- Courses
-CREATE TABLE public.learning_analytics_courses (
+CREATE TABLE IF NOT EXISTS public.learning_analytics_courses (
   snapshot_id                    bigint PRIMARY KEY
     REFERENCES public.learning_analytics_snapshot(id) ON DELETE CASCADE,
   total_courses                  integer NOT NULL,
@@ -100,7 +108,7 @@ CREATE TABLE public.learning_analytics_courses (
 );
 
 -- Content
-CREATE TABLE public.learning_analytics_content (
+CREATE TABLE IF NOT EXISTS public.learning_analytics_content (
   snapshot_id                bigint PRIMARY KEY
     REFERENCES public.learning_analytics_snapshot(id) ON DELETE CASCADE,
   total_topics               integer NOT NULL,
@@ -108,7 +116,7 @@ CREATE TABLE public.learning_analytics_content (
 );
 
 -- Skills / Learning Paths
-CREATE TABLE public.learning_analytics_skills (
+CREATE TABLE IF NOT EXISTS public.learning_analytics_skills (
   snapshot_id                      bigint PRIMARY KEY
     REFERENCES public.learning_analytics_snapshot(id) ON DELETE CASCADE,
   total_skills_acquired            integer NOT NULL,
@@ -118,7 +126,7 @@ CREATE TABLE public.learning_analytics_skills (
 );
 
 -- Assessments
-CREATE TABLE public.learning_analytics_assessments (
+CREATE TABLE IF NOT EXISTS public.learning_analytics_assessments (
   snapshot_id                   bigint PRIMARY KEY
     REFERENCES public.learning_analytics_snapshot(id) ON DELETE CASCADE,
   total_assessments             integer NOT NULL,
@@ -130,7 +138,7 @@ CREATE TABLE public.learning_analytics_assessments (
 );
 
 -- Engagement
-CREATE TABLE public.learning_analytics_engagement (
+CREATE TABLE IF NOT EXISTS public.learning_analytics_engagement (
   snapshot_id                 bigint PRIMARY KEY
     REFERENCES public.learning_analytics_snapshot(id) ON DELETE CASCADE,
   average_feedback_rating     numeric(3, 2) NOT NULL,
@@ -141,7 +149,7 @@ CREATE TABLE public.learning_analytics_engagement (
 
 -- 4.3) Category breakdown tables
 -- By competency level
-CREATE TABLE public.learning_analytics_competency_level_breakdown (
+CREATE TABLE IF NOT EXISTS public.learning_analytics_competency_level_breakdown (
   id            bigserial PRIMARY KEY,
   snapshot_id   bigint NOT NULL
     REFERENCES public.learning_analytics_snapshot(id) ON DELETE CASCADE,
@@ -153,7 +161,7 @@ CREATE INDEX IF NOT EXISTS idx_la_competency_level_snapshot
   ON public.learning_analytics_competency_level_breakdown (snapshot_id);
 
 -- By feedback rating
-CREATE TABLE public.learning_analytics_feedback_rating_breakdown (
+CREATE TABLE IF NOT EXISTS public.learning_analytics_feedback_rating_breakdown (
   id          bigserial PRIMARY KEY,
   snapshot_id bigint NOT NULL
     REFERENCES public.learning_analytics_snapshot(id) ON DELETE CASCADE,
@@ -165,7 +173,7 @@ CREATE INDEX IF NOT EXISTS idx_la_feedback_rating_snapshot
   ON public.learning_analytics_feedback_rating_breakdown (snapshot_id);
 
 -- By course status
-CREATE TABLE public.learning_analytics_course_status_breakdown (
+CREATE TABLE IF NOT EXISTS public.learning_analytics_course_status_breakdown (
   id          bigserial PRIMARY KEY,
   snapshot_id bigint NOT NULL
     REFERENCES public.learning_analytics_snapshot(id) ON DELETE CASCADE,
@@ -177,7 +185,7 @@ CREATE INDEX IF NOT EXISTS idx_la_course_status_snapshot
   ON public.learning_analytics_course_status_breakdown (snapshot_id);
 
 -- 4.4) Most demanded skills table
-CREATE TABLE public.learning_analytics_skill_demand (
+CREATE TABLE IF NOT EXISTS public.learning_analytics_skill_demand (
   id            bigserial PRIMARY KEY,
   snapshot_id   bigint NOT NULL
     REFERENCES public.learning_analytics_snapshot(id) ON DELETE CASCADE,
