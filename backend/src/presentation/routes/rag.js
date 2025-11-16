@@ -7,66 +7,63 @@ const router = Router();
  * POST /api/fill-content-metrics
  * Endpoint for RAG microservice to fetch AI report conclusions from last 24 hours
  * 
- * Request body:
+ * NEW Request body (JSON string or parsed object):
  * {
  *   "requester_service": "RAG",
- *   "payload": "{\"entries\":[]}"
+ *   "payload": {},
+ *   "response": {
+ *     "entries": []
+ *   }
  * }
  * 
- * Response:
+ * NEW Response (JSON string):
  * {
- *   "requester_service": "RAG",
- *   "payload": "{\"entries\":[...]}"
+ *   "entries": [
+ *     {
+ *       "report_name": "...",
+ *       "generated_at": "...",
+ *       "conclusions": {...}
+ *     }
+ *   ]
  * }
  */
 router.post('/fill-content-metrics', async (req, res) => {
   try {
-    const { requester_service, payload } = req.body || {};
-
-    // 1. Basic validation
-    if (!payload || typeof payload !== 'string') {
-      return res.status(400).json({ 
-        ok: false,
-        error: 'payload must be a JSON string' 
-      });
+    // 1. Normalize and parse body (supports JSON string OR parsed object)
+    let body;
+    if (typeof req.body === "string") {
+      try {
+        body = JSON.parse(req.body);
+      } catch (err) {
+        console.error("[RAG Route] Invalid JSON string in body:", err.message);
+        return res.status(400).json({ error: "Invalid JSON body" });
+      }
+    } else {
+      body = req.body || {};
     }
 
-    const requester = requester_service || 'RAG';
+    const requester = body.requester_service || "RAG";
+    const payload = body.payload ?? {};
+    const responseTemplate = body.response ?? { entries: [] };
 
-    // 2. Try to parse the original payload (should be {"entries":[]})
-    let parsedPayload;
-    try {
-      parsedPayload = JSON.parse(payload);
-    } catch (e) {
-      return res.status(400).json({ 
-        ok: false,
-        error: 'Invalid JSON in payload' 
-      });
-    }
+    // Optionally log requester
+    console.log(`[RAG Route] Request from ${requester}`);
 
-    // parsedPayload.entries exists but we don't use it - we always load from DB
-
-    // 3. Fetch data from DB for the last 24 hours
+    // 2. Fetch entries from the last 24 hours
     const entries = await fetchAiReportConclusionsForLast24Hours();
 
-    // 4. Build new payload
+    // 3. Build response payload: { entries: [...] }
     const responsePayloadObject = { entries };
-    const responsePayloadString = JSON.stringify(responsePayloadObject);
+    const responseJsonString = JSON.stringify(responsePayloadObject);
 
-    // 5. Return response to RAG
-    return res.json({
-      requester_service: requester,
-      payload: responsePayloadString
-    });
-  } catch (error) {
-    console.error('[RAG] Error in /api/fill-content-metrics:', error);
-    return res.status(500).json({ 
-      ok: false,
-      error: 'Internal server error',
-      message: error.message 
-    });
+    // 4. Return JSON string as the response body
+    return res
+      .type("application/json")
+      .send(responseJsonString);
+  } catch (err) {
+    console.error("[RAG Route] Internal error:", err.message);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
 export default router;
-
