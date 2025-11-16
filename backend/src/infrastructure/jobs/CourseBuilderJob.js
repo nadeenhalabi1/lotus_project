@@ -3,11 +3,10 @@ import { fetchCourseBuilderDataFromService } from "../clients/CourseBuilderClien
 import { saveCourseBuilderSnapshots } from "../db/courseBuilderCache.js";
 
 /**
- * הפעלת ה-cron job של Course Builder sync
- * רץ כל יום ב-06:00 בבוקר, לפי אזור זמן Asia/Jerusalem
+ * Starts the cron job for Course Builder sync
+ * Runs daily at 06:00 (Asia/Jerusalem)
  */
 export function startCourseBuilderScheduler() {
-  // ריצה כל יום ב-06:00 בבוקר, לפי אזור זמן Asia/Jerusalem
   cron.schedule(
     "0 6 * * *",
     async () => {
@@ -15,8 +14,13 @@ export function startCourseBuilderScheduler() {
 
       try {
         const courses = await fetchCourseBuilderDataFromService();
-        await saveCourseBuilderSnapshots(courses);
-        console.log("[CRON] Course Builder sync finished successfully");
+
+        if (!Array.isArray(courses)) {
+          console.error("[CRON] Expected an array of courses");
+        } else {
+          await saveCourseBuilderSnapshots(courses);
+          console.log("[CRON] Course Builder sync finished successfully");
+        }
       } catch (err) {
         console.error("[CRON] Course Builder sync failed:", err.message);
       }
@@ -25,7 +29,6 @@ export function startCourseBuilderScheduler() {
       timezone: "Asia/Jerusalem"
     }
   );
-  
-  console.log("[CRON] Course Builder scheduler initialized - will run daily at 06:00 (Asia/Jerusalem)");
-}
 
+  console.log("[CRON] Course Builder scheduler initialized - runs daily at 06:00 (Asia/Jerusalem)");
+}

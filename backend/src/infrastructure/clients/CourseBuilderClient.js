@@ -1,5 +1,4 @@
 import axios from "axios";
-import qs from "qs";
 
 const COURSE_BUILDER_API_URL = process.env.COURSE_BUILDER_API_URL;
 
@@ -8,72 +7,79 @@ if (!COURSE_BUILDER_API_URL) {
 }
 
 /**
- * קורא למיקרוסרביס Course Builder, ושולח לו payload ריק שימולא.
- * מצופה לחזור JSON במבנה:
+ * Calls the Course Builder microservice.
+ *
+ * NEW REQUEST FORMAT:
  * {
- *   courses: [
- *     {
- *       course_id,
- *       course_name,
- *       totalEnrollments,
- *       activeEnrollment,
- *       completionRate,
- *       averageRating,
- *       createdAt,
- *       feedback
- *     },
- *     ...
- *   ]
+ *   requester_name: "ManagementReporting",
+ *   payload: {},
+ *   response: {
+ *     courses: [
+ *       {
+ *         course_id: null,
+ *         course_name: "",
+ *         totalEnrollments: null,
+ *         activeEnrollment: null,
+ *         completionRate: null,
+ *         averageRating: null,
+ *         createdAt: "",
+ *         feedback: ""
+ *       }
+ *     ]
+ *   }
  * }
+ *
+ * The Course Builder service will fill "response.courses"
+ * and return ONLY the response object as a JSON string.
+ *
+ * This function returns an array of course objects.
  */
 export async function fetchCourseBuilderDataFromService() {
-  const payloadObject = {
-    courses: [
-      {
-        course_id: null,
-        course_name: "",
-        totalEnrollments: null,
-        activeEnrollment: null,
-        completionRate: null,
-        averageRating: null,
-        createdAt: "",
-        feedback: ""
-      }
-    ]
+  const requestObject = {
+    requester_name: "ManagementReporting",
+    payload: {},
+    response: {
+      courses: [
+        {
+          course_id: null,
+          course_name: "",
+          totalEnrollments: null,
+          activeEnrollment: null,
+          completionRate: null,
+          averageRating: null,
+          createdAt: "",
+          feedback: ""
+        }
+      ]
+    }
   };
 
-  const payloadString = JSON.stringify(payloadObject);
-
-  const body = qs.stringify({
-    serviceName: "ManagementReporting",
-    payload: payloadString
-  });
-
   try {
-    const response = await axios.post(COURSE_BUILDER_API_URL, body, {
+    const response = await axios.post(COURSE_BUILDER_API_URL, requestObject, {
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Content-Type": "application/json"
       },
       timeout: 30000
     });
 
-    const { payload } = response.data || {};
-
-    if (!payload || typeof payload !== "string") {
-      throw new Error("Invalid payload returned from Course Builder service");
+    if (!response || !response.data) {
+      throw new Error("Empty response from Course Builder service");
     }
 
-    const filledPayload = JSON.parse(payload);
+    const parsed =
+      typeof response.data === "string" ? JSON.parse(response.data) : response.data;
 
-    // מצפים למבנה { courses: [...] }
-    if (!filledPayload.courses || !Array.isArray(filledPayload.courses)) {
-      throw new Error("Course Builder payload does not contain 'courses' array");
+    if (!parsed.courses || !Array.isArray(parsed.courses)) {
+      throw new Error("Expected Course Builder response to contain { courses: [...] }");
     }
 
-    return filledPayload.courses;
+    console.log(
+      `[Course Builder Client] Received ${parsed.courses.length} courses from Course Builder service`
+    );
+
+    return parsed.courses;
   } catch (err) {
     console.error("Error calling Course Builder service:", err.message);
     throw err;
   }
 }
-
