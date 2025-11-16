@@ -55,7 +55,9 @@ export async function fetchCourseBuilderDataFromService() {
   };
 
   try {
-    const response = await axios.post(COURSE_BUILDER_API_URL, requestObject, {
+    const requestJsonString = JSON.stringify(requestObject);
+
+    const response = await axios.post(COURSE_BUILDER_API_URL, requestJsonString, {
       headers: {
         "Content-Type": "application/json"
       },

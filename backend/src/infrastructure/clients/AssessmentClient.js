@@ -60,8 +60,9 @@ export async function fetchAssessmentDataFromService() {
   };
 
   try {
-    // 2. Send as JSON (application/json)
-    const response = await axios.post(ASSESSMENT_API_URL, requestObject, {
+    const requestJsonString = JSON.stringify(requestObject);
+
+    const response = await axios.post(ASSESSMENT_API_URL, requestJsonString, {
       headers: {
         "Content-Type": "application/json"
       },
