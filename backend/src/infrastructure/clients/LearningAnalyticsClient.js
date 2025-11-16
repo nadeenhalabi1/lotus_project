@@ -1,5 +1,4 @@
 import axios from "axios";
-import qs from "qs";
 
 const LEARNING_ANALYTICS_API_URL = process.env.LEARNING_ANALYTICS_API_URL;
 
@@ -8,33 +7,34 @@ if (!LEARNING_ANALYTICS_API_URL) {
 }
 
 /**
- * קורא למיקרוסרביס Learning Analytics, ושולח לו payload ריק שימולא.
- * מצופה לחזור JSON במבנה:
+ * Calls the Learning Analytics microservice.
+ *
+ * NEW REQUEST FORMAT (similar to Assessment / CourseBuilder / Directory):
+ *
  * {
- *   version: string,
- *   aggregated_statistics: {
- *     period: string,
- *     date_range: { start_date, end_date },
- *     metrics: {
- *       learners: {...},
- *       courses: {...},
- *       content: {...},
- *       skills_competencies: {...},
- *       assessments: {...},
- *       engagement: {...}
- *     },
- *     category_breakdowns: {
- *       by_competency_level: {...},
- *       by_feedback_rating: {...},
- *       by_course_status: {...}
- *     },
- *     calculated_at: string
+ *   requester_name: "ManagementReporting",
+ *   payload: {},
+ *   response: {
+ *     version: "",
+ *     aggregated_statistics: null,
+ *     period: "",
+ *     date_range: "",
+ *     start_date: "",
+ *     end_date: "",
+ *     calculated_at: "",
+ *     metrics: { ... },
+ *     category_breakdowns: { ... }
  *   }
  * }
- * הנתונים נשמרים בטבלאות מנורמלות: learning_analytics_snapshot + טבלאות metrics ו-breakdowns.
+ *
+ * The Learning Analytics service fills the "response" object
+ * and returns ONLY that object as a JSON string.
+ *
+ * This function returns the parsed "response" object.
  */
 export async function fetchLearningAnalyticsFromService() {
-  const payloadObject = {
+  // Template with the same shape as the previous payloadObject
+  const responseTemplate = {
     version: "",
     aggregated_statistics: null,
     period: "",
@@ -95,32 +95,41 @@ export async function fetchLearningAnalyticsFromService() {
     }
   };
 
-  const payloadString = JSON.stringify(payloadObject);
-
-  const body = qs.stringify({
-    serviceName: "ManagementReporting",
-    payload: payloadString
-  });
+  const requestObject = {
+    requester_name: "ManagementReporting",
+    payload: {},
+    response: responseTemplate
+  };
 
   try {
-    const response = await axios.post(LEARNING_ANALYTICS_API_URL, body, {
+    const requestJsonString = JSON.stringify(requestObject);
+
+    const response = await axios.post(LEARNING_ANALYTICS_API_URL, requestJsonString, {
       headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Content-Type": "application/json"
       },
       timeout: 30000
     });
 
-    const { payload } = response.data || {};
-
-    if (!payload || typeof payload !== "string") {
-      throw new Error("Invalid payload returned from Learning Analytics service");
+    if (!response || typeof response.data === "undefined" || response.data === null) {
+      throw new Error("Empty response from Learning Analytics service");
     }
 
-    const filledPayload = JSON.parse(payload);
-    return filledPayload;
+    // The service returns ONLY the filled `response` object as JSON string or object
+    const parsed =
+      typeof response.data === "string" ? JSON.parse(response.data) : response.data;
+
+    if (!parsed || typeof parsed !== "object") {
+      throw new Error("Invalid Learning Analytics response structure");
+    }
+
+    // We expect fields like version, aggregated_statistics, metrics, category_breakdowns, etc.
+    // Do NOT enforce strict validation here, leave that to the cache layer.
+    console.log("[Learning Analytics Client] Received learning analytics payload");
+
+    return parsed;
   } catch (err) {
     console.error("Error calling Learning Analytics service:", err.message);
     throw err;
   }
 }
-
