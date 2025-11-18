@@ -14,6 +14,7 @@ import { securityConfig } from './config/security.js';
 import { rateLimiter } from './presentation/middleware/rateLimiter.js';
 import { initializeJobs } from './infrastructure/jobs/index.js';
 import runMigration from '../scripts/runMigration.js';
+import seedMockData, { isDatabaseEmpty } from './infrastructure/seedMockData.js';
 
 dotenv.config();
 
@@ -95,6 +96,22 @@ app.listen(PORT, () => {
       await runMigration();
     } catch (migrationErr) {
       console.error('[Startup] Migration error (non-fatal):', migrationErr.message);
+    }
+    
+    // Seed mock data if database is empty (one-time only) - non-blocking
+    if (process.env.DATABASE_URL) {
+      try {
+        const isEmpty = await isDatabaseEmpty();
+        if (isEmpty) {
+          console.log('[Startup] 📦 Database is empty, seeding mock data...');
+          await seedMockData();
+          console.log('[Startup] ✅ Mock data seeding completed');
+        } else {
+          console.log('[Startup] ℹ️  Database already has data, skipping seed');
+        }
+      } catch (seedErr) {
+        console.error('[Startup] Seed error (non-fatal):', seedErr.message);
+      }
     }
     
     // Test database connection on boot - non-blocking

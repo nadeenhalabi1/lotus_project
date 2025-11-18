@@ -1090,5 +1090,50 @@ if (isMainModule) {
     });
 }
 
+/**
+ * Check if tables have any data
+ * Returns true if tables are empty, false if they have data
+ */
+export async function isDatabaseEmpty() {
+  const conn = process.env.DATABASE_URL;
+  if (!conn) {
+    return false; // Don't seed if no DB connection
+  }
+
+  const client = new Client({
+    connectionString: conn,
+    ssl: { rejectUnauthorized: false }
+  });
+
+  try {
+    await client.connect();
+    
+    // Check if any of the main tables have data
+    const result = await client.query(`
+      SELECT 
+        (SELECT COUNT(*) FROM public.learning_analytics_snapshot) as snapshot_count,
+        (SELECT COUNT(*) FROM public.courses) as courses_count,
+        (SELECT COUNT(*) FROM public.course_builder_cache) as course_builder_count,
+        (SELECT COUNT(*) FROM public.assessments_cache) as assessments_count,
+        (SELECT COUNT(*) FROM public.directory_cache) as directory_count
+    `);
+    
+    const counts = result.rows[0];
+    const hasData = 
+      parseInt(counts.snapshot_count) > 0 ||
+      parseInt(counts.courses_count) > 0 ||
+      parseInt(counts.course_builder_count) > 0 ||
+      parseInt(counts.assessments_count) > 0 ||
+      parseInt(counts.directory_count) > 0;
+    
+    return !hasData; // Return true if empty
+  } catch (error) {
+    console.error("[Seed] Error checking if database is empty:", error.message);
+    return false; // On error, don't seed
+  } finally {
+    await client.end();
+  }
+}
+
 export default seedMockData;
 
