@@ -1,12 +1,12 @@
-import { RedisCacheRepository } from './RedisCacheRepository.js';
+import { DatabaseAnalyticsRepository } from './DatabaseAnalyticsRepository.js';
 
 // Singleton instance to ensure all parts of the app use the same cache
 let cacheRepositoryInstance = null;
 
 export const getCacheRepository = () => {
   if (!cacheRepositoryInstance) {
-    cacheRepositoryInstance = new RedisCacheRepository();
-    console.log('✓ Created singleton CacheRepository instance');
+    cacheRepositoryInstance = new DatabaseAnalyticsRepository();
+    console.log('✓ Created singleton DatabaseAnalyticsRepository instance');
   }
   return cacheRepositoryInstance;
 };
