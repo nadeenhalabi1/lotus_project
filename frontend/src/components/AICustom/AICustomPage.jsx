@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { aiCustomAPI } from '../../services/api.js';
-import { BarChart, LineChart } from '../Charts';
+import { BarChart, LineChart, MultiSeriesBarChart, MultiSeriesLineChart } from '../Charts';
 import ErrorMessage from '../Common/ErrorMessage';
 
 const AICustomPage = () => {
@@ -12,52 +12,108 @@ const AICustomPage = () => {
   const [result, setResult] = useState(null);
 
   /**
-   * Transforms backend query result into chart-ready data format
-   * Expects: columns array and rows array from backend
-   * Returns: { labels: string[], values: number[], chartData: [{name, value}] } or null if cannot transform
+   * Checks if a value is numeric (number or numeric string)
+   */
+  const isNumericValue = (value) => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'number') return Number.isFinite(value);
+    if (typeof value === 'string') {
+      const n = Number(value);
+      return Number.isFinite(n) && value.trim() !== '';
+    }
+    return false;
+  };
+
+  /**
+   * Transforms backend query result into chart-ready data format or table data
+   * Returns: { kind: "chart" | "table" | "empty", ... }
    */
   const transformToChartData = (columns, rows) => {
-    if (!columns || !Array.isArray(columns) || columns.length === 0) {
-      return null;
-    }
-
+    // Empty result
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
-      return null;
+      return { kind: 'empty' };
     }
 
-    // For simple 2-column charts: first column = X-axis (labels), second column = Y-axis (values)
-    if (columns.length === 2) {
-      const firstCol = columns[0].name;
-      const secondCol = columns[1].name;
+    // No column info: fallback to table
+    if (!columns || !Array.isArray(columns) || columns.length === 0) {
+      return { kind: 'table', columns: [], rows };
+    }
 
-      // Check if second column contains numeric values
-      const sampleValue = rows[0]?.[secondCol];
-      if (typeof sampleValue !== 'number') {
-        return null; // Cannot chart non-numeric Y-axis
+    // First column is X-axis (labels)
+    const xCol = columns[0];
+    const xKey = xCol.name;
+
+    // Find all numeric columns beyond the first
+    const numericColumns = [];
+    for (let i = 1; i < columns.length; i++) {
+      const col = columns[i];
+      const key = col.name;
+      
+      // Sample first 10 rows to check if column is numeric
+      const sampleValues = rows.slice(0, 10).map(r => r[key]).filter(v => v !== null && v !== undefined);
+      const hasNumeric = sampleValues.some(v => isNumericValue(v));
+      
+      if (hasNumeric) {
+        numericColumns.push(col);
       }
-
-      const labels = rows.map(row => {
-        const value = row[firstCol];
-        // Convert to string, handle dates/numbers
-        return value !== null && value !== undefined ? String(value) : '';
-      });
-
-      const values = rows.map(row => {
-        const value = row[secondCol];
-        return typeof value === 'number' ? value : 0;
-      });
-
-      // Create chart data in format expected by chart components: [{name, value}]
-      const chartData = labels.map((label, index) => ({
-        name: label,
-        value: values[index]
-      }));
-
-      return { labels, values, chartData };
     }
 
-    // For more than 2 columns, we can't easily visualize as simple bar/line chart
-    return null;
+    // No numeric columns -> table view
+    if (numericColumns.length === 0) {
+      return { kind: 'table', columns, rows };
+    }
+
+    // Extract labels from first column
+    const labels = rows.map(row => {
+      const value = row[xKey];
+      return value !== null && value !== undefined ? String(value) : '';
+    });
+
+    // Create series for each numeric column
+    const series = numericColumns.map(col => {
+      const key = col.name;
+      const values = rows.map(row => {
+        const v = row[key];
+        if (typeof v === 'number') return v;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      });
+
+      return {
+        key,
+        label: key,
+        values
+      };
+    });
+
+    // For single series, create simple chart data format [{name, value}]
+    // For multiple series, create multi-series format [{name, series1, series2, ...}]
+    let chartData;
+    if (series.length === 1) {
+      // Single series: simple format
+      chartData = labels.map((label, index) => ({
+        name: label,
+        value: series[0].values[index]
+      }));
+    } else {
+      // Multiple series: multi-series format
+      chartData = labels.map((label, index) => {
+        const item = { name: label };
+        series.forEach(s => {
+          item[s.key] = s.values[index];
+        });
+        return item;
+      });
+    }
+
+    return {
+      kind: 'chart',
+      xKey,
+      labels,
+      series,
+      chartData,
+      isMultiSeries: series.length > 1
+    };
   };
 
   const handleGenerate = async () => {
@@ -94,32 +150,17 @@ const AICustomPage = () => {
       }
 
       if (data.status === 'ok') {
-        // Check if we have data
-        if (!data.rows || data.rows.length === 0) {
-          setError('No data to display.');
-          setLoading(false);
-          return;
-        }
+        // Transform to chart/table data
+        const transformed = transformToChartData(data.columns, data.rows);
 
-        // Transform to chart data
-        const chartData = transformToChartData(data.columns, data.rows);
-
-        if (!chartData) {
-          setError('This query result cannot be visualized as a chart. The result must have exactly 2 columns, with the second column containing numeric values.');
-          setLoading(false);
-          return;
-        }
-
-        // Store the result
+        // Store the result with transformation info
         setResult({
           sql: data.sql,
           reason: data.reason,
           rowCount: data.rowCount,
           columns: data.columns,
           rows: data.rows,
-          chartData: chartData.chartData,
-          labels: chartData.labels,
-          values: chartData.values
+          transformed
         });
 
         setLoading(false);
@@ -209,13 +250,13 @@ const AICustomPage = () => {
         </div>
       )}
 
-      {/* Chart Result */}
+      {/* Result Display (Chart, Table, or Empty) */}
       {result && !loading && !error && (
         <div className="max-w-6xl mx-auto">
           <div className="card">
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-neutral-900 dark:text-neutral-50 mb-2">
-                AI-Generated Graph
+                {result.transformed.kind === 'chart' ? 'AI-Generated Graph' : 'Query Results'}
               </h2>
               {result.reason && (
                 <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
@@ -228,30 +269,93 @@ const AICustomPage = () => {
               </div>
             </div>
 
-            {/* Chart Container */}
-            <div className="w-full" style={{ height: '400px' }}>
-              {/* Determine chart type: use LineChart for time-series data, BarChart otherwise */}
-              {result.labels && result.labels.length > 0 && (
-                (() => {
-                  // Simple heuristic: if labels look like dates/times, use LineChart, otherwise BarChart
-                  const firstLabel = result.labels[0];
+            {/* Chart Display */}
+            {result.transformed.kind === 'chart' && (
+              <div className="w-full" style={{ height: '400px' }}>
+                {(() => {
+                  const firstLabel = result.transformed.labels[0] || '';
                   const isTimeSeries = /^\d{4}-\d{2}-\d{2}|^\d{2}\/\d{2}\/\d{4}|^\d{4}-\d{2}$|month|year|date|time/i.test(firstLabel);
                   
                   const chartProps = {
-                    data: result.chartData,
+                    data: result.transformed.chartData,
                     width: '100%',
                     height: 400,
                     colorScheme: { primary: '#6366f1', secondary: '#818cf8', gradient: ['#6366f1', '#818cf8', '#a5b4fc'] }
                   };
 
-                  return isTimeSeries ? (
-                    <LineChart {...chartProps} />
-                  ) : (
-                    <BarChart {...chartProps} />
-                  );
-                })()
-              )}
-            </div>
+                  if (result.transformed.isMultiSeries) {
+                    // Multi-series chart
+                    return isTimeSeries ? (
+                      <MultiSeriesLineChart {...chartProps} />
+                    ) : (
+                      <MultiSeriesBarChart {...chartProps} />
+                    );
+                  } else {
+                    // Single series chart
+                    return isTimeSeries ? (
+                      <LineChart {...chartProps} />
+                    ) : (
+                      <BarChart {...chartProps} />
+                    );
+                  }
+                })()}
+              </div>
+            )}
+
+            {/* Table Display */}
+            {result.transformed.kind === 'table' && (
+              <div>
+                <div className="mb-4 p-3 bg-info-50 dark:bg-info-900/30 border border-info-200 dark:border-info-700 rounded-lg">
+                  <p className="text-sm text-info-800 dark:text-info-200">
+                    This result has no numeric columns suitable for charting, so it is shown as a table.
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-neutral-100 dark:bg-neutral-700">
+                        {result.columns.map((col, idx) => (
+                          <th
+                            key={idx}
+                            className="px-4 py-2 text-left text-sm font-semibold text-neutral-900 dark:text-neutral-50 border-b border-neutral-300 dark:border-neutral-600"
+                          >
+                            {col.name}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.rows.map((row, rowIdx) => (
+                        <tr
+                          key={rowIdx}
+                          className="border-b border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                        >
+                          {result.columns.map((col, colIdx) => (
+                            <td
+                              key={colIdx}
+                              className="px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300"
+                            >
+                              {row[col.name] !== null && row[col.name] !== undefined
+                                ? String(row[col.name])
+                                : ''}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Empty State */}
+            {result.transformed.kind === 'empty' && (
+              <div className="text-center py-12">
+                <p className="text-neutral-500 dark:text-neutral-400 text-lg">
+                  No data to display for this query.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
