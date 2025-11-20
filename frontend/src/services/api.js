@@ -185,6 +185,23 @@ export const openaiAPI = {
   },
 };
 
+// AI Custom API
+export const aiCustomAPI = {
+  /**
+   * POST /api/ai-custom/sql
+   * Generates a SQL query from natural language using OpenAI.
+   * 
+   * @param {string} queryText - The user's natural language request (1-1000 characters)
+   * @returns {Promise<{status: string, sql?: string, reason?: string, message?: string}>}
+   */
+  generateSql: (queryText) => {
+    // Use direct axios call since this endpoint is at /api/ai-custom, not /api/v1
+    const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    const cleanBaseURL = baseURL.replace(/\/$/, '');
+    return axios.post(`${cleanBaseURL}/api/ai-custom/sql`, { queryText });
+  },
+};
+
 // Chart Transcription API (DB-first flow - API Contract)
 export const chartTranscriptionAPI = {
   /**
