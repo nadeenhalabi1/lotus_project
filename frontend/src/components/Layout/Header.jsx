@@ -63,6 +63,16 @@ const Header = () => {
               >
                 Reports
               </Link>
+              <Link
+                to="/ai-custom"
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-fast ${
+                  isActive('/ai-custom')
+                    ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
+                    : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                }`}
+              >
+                AI custom
+              </Link>
             </nav>
           </div>
 
