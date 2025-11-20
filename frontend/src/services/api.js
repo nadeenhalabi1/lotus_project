@@ -200,6 +200,20 @@ export const aiCustomAPI = {
     const cleanBaseURL = baseURL.replace(/\/$/, '');
     return axios.post(`${cleanBaseURL}/api/ai-custom/sql`, { queryText });
   },
+
+  /**
+   * POST /api/ai-custom/query-data
+   * Generates SQL from natural language, validates it, executes it, and returns the results.
+   * 
+   * @param {string} queryText - The user's natural language request (1-1000 characters)
+   * @returns {Promise<{status: string, sql?: string, reason?: string, rowCount?: number, columns?: Array, rows?: Array, message?: string}>}
+   */
+  queryData: (queryText) => {
+    // Use direct axios call since this endpoint is at /api/ai-custom, not /api/v1
+    const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+    const cleanBaseURL = baseURL.replace(/\/$/, '');
+    return axios.post(`${cleanBaseURL}/api/ai-custom/query-data`, { queryText });
+  },
 };
 
 // Chart Transcription API (DB-first flow - API Contract)
