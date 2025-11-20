@@ -52,7 +52,10 @@ export const initializeJobs = async () => {
       const entries = await cacheRepo.getLatestEntries();
       console.log(`✓ Verified: ${entries.length} services have data in cache`);
     } else {
-      console.warn('⚠ No data was loaded. Results:', JSON.stringify(results, null, 2));
+      // This is expected if microservices are not yet connected
+      console.warn('⚠ No data was loaded from microservices. This is normal if microservices are not yet connected.');
+      console.warn('⚠ Results:', JSON.stringify(results, null, 2));
+      console.log('ℹ️  The system will continue to work with existing database data.');
     }
   } catch (error) {
     console.error('❌ Failed to load initial mock data:', error.message);

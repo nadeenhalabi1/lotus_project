@@ -102,7 +102,8 @@ export class CollectDataUseCase {
 
       try {
         console.log(`[CollectDataUseCase] Fetching ${handler.label} data...`);
-        const fetchedData = await handler.fetch(jwtToken);
+        // Note: fetch functions don't take jwtToken parameter - they use env variables for API URLs
+        const fetchedData = await handler.fetch();
         console.log(`[CollectDataUseCase] Saving ${handler.label} snapshot to DB...`);
         await handler.save(fetchedData);
 
@@ -111,10 +112,20 @@ export class CollectDataUseCase {
           lastUpdated: new Date().toISOString()
         });
       } catch (error) {
-        console.error(`[CollectDataUseCase] ${handler.label} sync failed:`, error.message);
+        // Log error but don't treat it as critical - microservices may not be connected yet
+        const errorMsg = error.message || 'Unknown error';
+        const isConnectionError = errorMsg.includes('404') || errorMsg.includes('400') || errorMsg.includes('ECONNREFUSED') || errorMsg.includes('timeout');
+        
+        if (isConnectionError) {
+          console.warn(`[CollectDataUseCase] ⚠️ ${handler.label} service not available:`, errorMsg);
+          console.warn(`[CollectDataUseCase] ℹ️  This is expected if microservices are not yet connected. System will use existing DB data.`);
+        } else {
+          console.error(`[CollectDataUseCase] ❌ ${handler.label} sync failed:`, errorMsg);
+        }
+        
         results.failed.push({
           service,
-          reason: error.message,
+          reason: errorMsg,
           lastSuccessful: null
         });
         results.partial = true;
