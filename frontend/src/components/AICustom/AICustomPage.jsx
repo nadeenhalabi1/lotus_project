@@ -181,7 +181,7 @@ const AICustomPage = () => {
       {/* Welcome Message */}
       <div className="text-center mb-8">
         <h1 className="text-4xl font-bold text-neutral-900 dark:text-neutral-50 mb-2">
-          Welcome to AI custom insights
+          Welcome to AI-generated graph
         </h1>
       </div>
 
