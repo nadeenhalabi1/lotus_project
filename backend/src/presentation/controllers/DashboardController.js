@@ -663,32 +663,19 @@ export class DashboardController {
             if (!organizations || !Array.isArray(organizations) || organizations.length === 0) {
               filteredChartData = [];
             } else {
-              // ✅ Calculate completion rates per org based on actual DB data
-              const orgCompletionRates = {};
+            // ✅ Calculate completion rates per org based on actual DB data
+            // Note: Since we don't have direct course-org mapping in the cache,
+            // we use the filtered average completion rate for all organizations.
+            // This ensures all data comes from DB only (no estimated factors).
+            const orgCompletionRates = {};
+            
+            for (const org of organizations.slice(0, 10)) { // Limit to top 10 orgs
+              const orgName = org.company_name || org.organization || 'Unknown Organization';
+              if (!orgName || orgName === 'Unknown Organization') continue;
               
-              for (const org of organizations.slice(0, 10)) { // Limit to top 10 orgs
-                const orgName = org.company_name || org.organization || 'Unknown Organization';
-                if (!orgName || orgName === 'Unknown Organization') continue;
-                
-                // Use company_size to estimate variation from filtered average
-                let sizeFactor = 0;
-                const companySize = org.company_size || '';
-                if (companySize.includes('500+')) {
-                  sizeFactor = 0.08; // +8% for large companies
-                } else if (companySize.includes('200-500')) {
-                  sizeFactor = 0.05; // +5% for medium-large
-                } else if (companySize.includes('50-200')) {
-                  sizeFactor = 0.02; // +2% for medium
-                } else if (companySize.includes('10-50')) {
-                  sizeFactor = -0.02; // -2% for small
-                } else {
-                  sizeFactor = -0.05; // -5% for very small (1-10)
-                }
-                
-                // Calculate completion rate: base + size factor (deterministic, no random)
-                const orgCompletionRate = Math.min(100, Math.max(0, avgCompletionForFiltered * (1 + sizeFactor)));
-                orgCompletionRates[orgName] = Math.round(orgCompletionRate * 10) / 10;
-              }
+              // Use filtered average completion rate from DB (no estimated factors)
+              orgCompletionRates[orgName] = Math.round(avgCompletionForFiltered * 10) / 10;
+            }
               
               filteredChartData = Object.entries(orgCompletionRates)
                 .map(([org, rate]) => ({ name: org, value: rate }))

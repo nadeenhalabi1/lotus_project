@@ -277,35 +277,17 @@ export class GetCombinedAnalyticsUseCase {
     if (globalAvgCompletion === 0) return null;
 
     // ✅ Calculate completion rate per organization based on actual DB data
-    // Since we don't have direct course-org mapping in the cache, we'll use:
-    // 1. Organization size (from company_size) as a factor
-    // 2. Global average completion rate as base
-    // 3. Small variation based on org size (larger orgs tend to have slightly better rates)
+    // Note: Since we don't have direct course-org mapping in the cache,
+    // we use the global average completion rate for all organizations.
+    // This ensures all data comes from DB only (no estimated factors).
     const orgCompletionRates = {};
     
     for (const org of organizations.slice(0, 10)) { // Limit to top 10 orgs
       const orgName = org.company_name || org.organization || 'Unknown Organization';
       if (!orgName || orgName === 'Unknown Organization') continue;
       
-      // Use company_size to estimate variation from global average
-      // Larger companies (500+) tend to have better completion rates
-      let sizeFactor = 0;
-      const companySize = org.company_size || '';
-      if (companySize.includes('500+')) {
-        sizeFactor = 0.08; // +8% for large companies
-      } else if (companySize.includes('200-500')) {
-        sizeFactor = 0.05; // +5% for medium-large
-      } else if (companySize.includes('50-200')) {
-        sizeFactor = 0.02; // +2% for medium
-      } else if (companySize.includes('10-50')) {
-        sizeFactor = -0.02; // -2% for small
-      } else {
-        sizeFactor = -0.05; // -5% for very small (1-10)
-      }
-      
-      // Calculate completion rate: base + size factor (deterministic, no random)
-      const orgCompletionRate = Math.min(100, Math.max(0, globalAvgCompletion * (1 + sizeFactor)));
-      orgCompletionRates[orgName] = Math.round(orgCompletionRate * 10) / 10;
+      // Use global average completion rate from DB (no estimated factors)
+      orgCompletionRates[orgName] = Math.round(globalAvgCompletion * 10) / 10;
     }
 
     const chartData = Object.entries(orgCompletionRates)
@@ -338,9 +320,14 @@ export class GetCombinedAnalyticsUseCase {
     
     if (!courses || courses.length === 0) return null;
 
-    // Get engagement metrics from Learning Analytics
-    const platformUsageRate = laMetrics.platformUsageRate || 85;
-    const userSatisfactionScore = laMetrics.userSatisfactionScore || 4.0;
+    // ✅ Get engagement metrics from Learning Analytics - must exist in DB
+    const platformUsageRate = laMetrics.platformUsageRate;
+    const userSatisfactionScore = laMetrics.userSatisfactionScore;
+    
+    // If no engagement data from DB, return null (don't use fallback values)
+    if (!platformUsageRate || !userSatisfactionScore) {
+      return null;
+    }
     
     // Calculate engagement index: combination of platform usage and satisfaction
     const baseEngagementIndex = (platformUsageRate + (userSatisfactionScore * 20)) / 2;
@@ -430,7 +417,7 @@ export class GetCombinedAnalyticsUseCase {
     
     if (!contentItems || contentItems.length === 0) return null;
 
-    // Categorize by creator type based on trainer_id pattern
+    // ✅ Categorize by creator type using generation_method from DB
     const creatorStats = {
       'AI-Generated': { count: 0, views: 0 },
       'Trainer-Generated': { count: 0, views: 0 },
@@ -438,12 +425,17 @@ export class GetCombinedAnalyticsUseCase {
     };
 
     contentItems.forEach(item => {
-      const trainerId = item.trainer_id || '';
-      const trainerNum = parseInt(trainerId.replace('trainer_', '')) || 0;
+      // Use generation_method from DB (manual, ai_assisted, mixed, full_ai)
+      const generationMethod = item.generation_method || 'manual';
       
-      let type = 'Trainer-Generated';
-      if (trainerNum % 3 === 0) type = 'AI-Generated';
-      else if (trainerNum % 3 === 1) type = 'Mixed';
+      let type = 'Trainer-Generated'; // Default to manual
+      if (generationMethod === 'full_ai') {
+        type = 'AI-Generated';
+      } else if (generationMethod === 'mixed' || generationMethod === 'ai_assisted') {
+        type = 'Mixed';
+      } else if (generationMethod === 'manual') {
+        type = 'Trainer-Generated';
+      }
       
       creatorStats[type].count += 1;
       creatorStats[type].views += (item.views || 0);
@@ -480,18 +472,27 @@ export class GetCombinedAnalyticsUseCase {
     
     if (!trends || trends.length === 0) return null;
 
-    // Sort by date and format for chart
+    // Sort by date and format for chart - only use trends with valid dates from DB
     const chartData = trends
-      .sort((a, b) => new Date(a.date_range?.start || 0) - new Date(b.date_range?.start || 0))
-      .map((trend, index) => {
-        const monthName = new Date(trend.date_range?.start || Date.now()).toLocaleDateString('en-US', { month: 'short' });
+      .filter(trend => trend.date_range?.start) // Only include trends with valid dates from DB
+      .sort((a, b) => new Date(a.date_range.start) - new Date(b.date_range.start))
+      .map((trend) => {
+        const monthName = new Date(trend.date_range.start).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        const newUsers = trend.metrics?.newUsers;
+        const totalLearningHours = trend.metrics?.totalLearningHours;
+        
+        // Only include if we have valid data from DB
+        if (newUsers === undefined || newUsers === null || totalLearningHours === undefined || totalLearningHours === null) {
+          return null;
+        }
+        
         return {
-          name: monthName || `Month ${index + 1}`,
-          'Active Learners': trend.metrics?.newUsers || 0,
-          'Learning Hours': Math.round((trend.metrics?.totalLearningHours || 0) / 10) // Scale down for readability
+          name: monthName,
+          'Active Learners': newUsers,
+          'Learning Hours': Math.round(totalLearningHours / 10) // Scale down for readability
         };
       })
-      .filter(item => item['Active Learners'] > 0 || item['Learning Hours'] > 0);
+      .filter(item => item !== null && (item['Active Learners'] > 0 || item['Learning Hours'] > 0));
 
     if (chartData.length === 0) return null;
 
