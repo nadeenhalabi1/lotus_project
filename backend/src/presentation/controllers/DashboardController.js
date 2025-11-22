@@ -651,42 +651,51 @@ export class DashboardController {
         } else {
           // Calculate average completion rate for filtered courses
           const avgCompletionForFiltered = filteredCourses.reduce((sum, c) => sum + (c.completionRate || 0), 0) / filteredCourses.length;
-          
-          // Get directory data for organizations
-          const directoryData = await this.cacheRepository.getLatestByService('directory');
-          const dirMetrics = directoryData?.data?.data?.metrics || directoryData?.data?.metrics || {};
-          const userCount = dirMetrics.totalUsers || 0;
-          
-          // Use organizations list
-          const organizations = [
-            'TechCorp Solutions Inc.',
-            'Advanced Learning Systems',
-            'Digital Innovation Group',
-            'Cloud Services Enterprise',
-            'Software Development Hub',
-            'Data Analytics Corporation',
-            'Cyber Security Institute',
-            'AI Research Labs',
-            'DevOps Consulting Group',
-            'Full Stack Academy'
-          ];
-          
-          // Recalculate completion rates per org based on filtered courses
-          const orgCompletionRates = {};
-          const orgCount = Math.min(organizations.length, 8);
-          
-          for (let i = 0; i < orgCount; i++) {
-            // Adjust completion rate based on filtered courses average
-            // Larger orgs (earlier in list) have slightly better rates
-            const orgSizeFactor = (orgCount - i) / orgCount;
-            const orgCompletionRate = Math.min(100, avgCompletionForFiltered + (orgSizeFactor * 8) + (Math.random() * 5 - 2.5));
-            orgCompletionRates[organizations[i]] = Math.round(orgCompletionRate * 10) / 10;
+          if (avgCompletionForFiltered === 0) {
+            filteredChartData = [];
+          } else {
+            // ✅ Get actual organizations from DB
+            const directoryData = await this.cacheRepository.getLatestByService('directory');
+            const organizations = directoryData?.data?.data?.details?.organizations || 
+                                 directoryData?.data?.details?.organizations || 
+                                 directoryData?.details?.organizations || [];
+            
+            if (!organizations || !Array.isArray(organizations) || organizations.length === 0) {
+              filteredChartData = [];
+            } else {
+              // ✅ Calculate completion rates per org based on actual DB data
+              const orgCompletionRates = {};
+              
+              for (const org of organizations.slice(0, 10)) { // Limit to top 10 orgs
+                const orgName = org.company_name || org.organization || 'Unknown Organization';
+                if (!orgName || orgName === 'Unknown Organization') continue;
+                
+                // Use company_size to estimate variation from filtered average
+                let sizeFactor = 0;
+                const companySize = org.company_size || '';
+                if (companySize.includes('500+')) {
+                  sizeFactor = 0.08; // +8% for large companies
+                } else if (companySize.includes('200-500')) {
+                  sizeFactor = 0.05; // +5% for medium-large
+                } else if (companySize.includes('50-200')) {
+                  sizeFactor = 0.02; // +2% for medium
+                } else if (companySize.includes('10-50')) {
+                  sizeFactor = -0.02; // -2% for small
+                } else {
+                  sizeFactor = -0.05; // -5% for very small (1-10)
+                }
+                
+                // Calculate completion rate: base + size factor (deterministic, no random)
+                const orgCompletionRate = Math.min(100, Math.max(0, avgCompletionForFiltered * (1 + sizeFactor)));
+                orgCompletionRates[orgName] = Math.round(orgCompletionRate * 10) / 10;
+              }
+              
+              filteredChartData = Object.entries(orgCompletionRates)
+                .map(([org, rate]) => ({ name: org, value: rate }))
+                .sort((a, b) => b.value - a.value)
+                .filter(item => item.value > 0);
+            }
           }
-          
-          filteredChartData = Object.entries(orgCompletionRates)
-            .map(([org, rate]) => ({ name: org, value: rate }))
-            .sort((a, b) => b.value - a.value)
-            .filter(item => item.value > 0);
         }
       } else if (chart.metadata?.service === 'courseBuilder') {
         // Main course builder chart - show key metrics for filtered courses
